@@ -69,10 +69,13 @@ poi `npm run db:migrate`. Non editare a mano i file SQL generati in `packages/db
 
 ## Ambiente: quattro trappole già scattate
 
-**Node 20, e la versione sta in `.nvmrc`.** `engines.node` resta un permissivo `">=20"`. La CI usa
-`node-version-file: .nvmrc`: puntarla a `engines` la fa risolvere all'ultima major, dove il binding
-nativo di `better-sqlite3` va in assert (SIGABRT, exit 134) durante il seed. Se `db:seed` muore
-senza un errore leggibile, guarda `node -v` prima di ogni altra cosa.
+**Node 20 o 22, e la versione della CI sta in `.nvmrc`.** Il range supportato è
+`engines.node: ">=20 <23"`; dentro quel range `.nvmrc` fissa il 20 (è quello che installa la CI,
+via `node-version-file: .nvmrc`) e le immagini Docker girano su 22, dove eseguono migrazioni e
+server ma mai il seed. Da 23 in su il binding nativo di `better-sqlite3` va in assert (SIGABRT,
+exit 134) durante il seed: per questo il range ha un tetto. Non puntare `node-version-file` a
+`engines`, o la CI risolverebbe l'ultima major consentita invece di quella testata. Se `db:seed`
+muore senza un errore leggibile, guarda `node -v` prima di ogni altra cosa.
 
 **`PUBLIC_SITE_URL` è obbligatoria in produzione e non può puntare a localhost.** `astro build`
 forza `NODE_ENV=production` e `astro.config.mjs` rifiuta un valore assente, non parsabile o locale,
@@ -89,9 +92,11 @@ dice, ma è facile scambiarlo per il controllo CSRF.
 **Cambiare `ADMIN_PASSWORD` nel `.env` non cambia la password.** Il login verifica un hash scrypt
 nella tabella `admin_users`, e quell'hash lo scrive solo il seed. Finché non rilanci `db:seed`
 resta valida la password precedente — con l'admin esposto, è una falsa sensazione di sicurezza.
-Attenzione però: il seed fa `delete` di prodotti e collezioni e li ricrea, quindi gli ordini
-esistenti restano ma le loro righe puntano a varianti che non esistono più (sono snapshot, si
-leggono lo stesso). Per la sola password conviene uno script mirato che aggiorni l'hash.
+Attenzione però a cosa si porta dietro il seed: fa `delete` di prodotti e collezioni e li ricrea,
+e poiché `cart_items.variant_id` ha `onDelete: 'cascade'` **svuota tutti i carrelli attivi** (il
+seed stesso li conta prima di partire, con `countCartLinesAtRisk`). Gli ordini esistenti restano,
+ma le loro righe puntano a varianti che non esistono più: sono snapshot, si leggono lo stesso. Su
+un negozio vivo, per la sola password usa uno script mirato che aggiorni l'hash e basta.
 
 ## CI
 

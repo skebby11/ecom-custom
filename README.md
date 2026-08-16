@@ -70,11 +70,21 @@ written into the database by the seed.
 
 ### Requirements
 
-Node **20**, pinned in `.nvmrc`. The version lives there and not in `engines.node`
-(which stays a permissive `">=20"`) because CI resolves `node-version-file: .nvmrc`:
-pointing it at `engines` resolves to the newest Node, where the `better-sqlite3` native
-binding aborts during the seed. If `npm run db:seed` dies with `SIGABRT` / exit 134,
-check your Node version first.
+**Node 20 or 22.** `engines.node` is `">=20 <23"`, and the three places that pin a
+version stay inside it:
+
+| Where | Version | Why |
+| --- | --- | --- |
+| `.nvmrc` | 20 | what CI installs, via `node-version-file: .nvmrc` |
+| Docker images | 22 | runtime for `docker compose`; runs migrations and the server, never the seed |
+| `engines.node` | `>=20 <23` | the supported range |
+
+Node 23 and newer are excluded on purpose: the `better-sqlite3` native binding aborts
+there (`SIGABRT`, exit 134) during the seed. If `npm run db:seed` dies without a readable
+error, check `node -v` before anything else.
+
+Keep `.nvmrc` as the place where the CI version lives — pointing `node-version-file` at
+`engines` would resolve to the newest allowed major instead of the tested one.
 
 ## Configuration
 
@@ -102,8 +112,11 @@ Two things worth knowing before they bite:
   is set in `.env`, because the compose fallback is `localhost:4321`.
 - **Changing `ADMIN_PASSWORD` in `.env` does not change the password.** The login checks
   a scrypt hash stored in the `admin_users` table, and only the seed writes it. Re-run
-  `npm run db:seed` to apply a new password — note that the seed also deletes and
-  recreates products and collections.
+  `npm run db:seed` to apply a new password — but mind what else the seed does: it
+  deletes and recreates products and collections, and since `cart_items.variant_id`
+  cascades on delete, **every active cart is emptied**. Past orders survive, because
+  their lines are snapshots. On a live shop, prefer a targeted script that only rewrites
+  the hash.
 
 ## Stripe
 
@@ -219,10 +232,17 @@ Remember that the storefront build needs `PUBLIC_SITE_URL` as a build arg.
 
 ## Moving from SQLite to Postgres
 
-When the project outgrows what SQLite handles comfortably:
+When the project outgrows what SQLite handles comfortably.
 
-1. Replace `better-sqlite3` + `drizzle-orm/better-sqlite3` with `pg` (or `postgres`) +
-   `drizzle-orm/node-postgres` in `packages/db`.
+**This is a schema-only procedure, meant for a fresh, empty PostgreSQL database.** It
+does not move existing rows: no dump, no import, no cutover. If you already have live
+data, back up the SQLite file first and plan a separate migration — export each table,
+reconcile the type differences below, import, then verify counts before switching the
+connection string.
+
+1. Replace `better-sqlite3` + `drizzle-orm/better-sqlite3` in `packages/db` with one of
+   the two valid driver/adapter pairs: `pg` with `drizzle-orm/node-postgres`, or
+   `postgres` with `drizzle-orm/postgres-js`. The two are not interchangeable.
 2. Change `dialect: 'sqlite'` to `dialect: 'postgresql'` in
    `packages/db/drizzle.config.ts` and point `dbCredentials` at a connection string.
 3. Regenerate migrations from scratch with `npm run db:generate` — SQL syntax differs
