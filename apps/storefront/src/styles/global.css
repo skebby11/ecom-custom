@@ -1,0 +1,107 @@
+@import 'tailwindcss';
+
+/**
+ * Design token del tema. Cambiare questi valori ridefinisce tutto il sito:
+ * è il punto d'ingresso per il rebranding su un nuovo cliente.
+ */
+@theme {
+  --color-brand-50: oklch(0.97 0.014 254);
+  --color-brand-100: oklch(0.93 0.032 254);
+  --color-brand-200: oklch(0.87 0.06 254);
+  --color-brand-300: oklch(0.78 0.1 254);
+  --color-brand-400: oklch(0.68 0.15 254);
+  --color-brand-500: oklch(0.58 0.19 254);
+  --color-brand-600: oklch(0.5 0.19 254);
+  --color-brand-700: oklch(0.43 0.16 254);
+  --color-brand-800: oklch(0.36 0.13 254);
+  --color-brand-900: oklch(0.3 0.1 254);
+
+  --color-ink: oklch(0.22 0.01 260);
+  --color-muted: oklch(0.52 0.012 260);
+  --color-line: oklch(0.91 0.005 260);
+  --color-surface: oklch(0.99 0.002 260);
+  --color-surface-alt: oklch(0.965 0.004 260);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --radius-card: 0.75rem;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+
+  /* Nasconde le frecce dei campi numerici del carrello */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+}
+
+/**
+ * Classi scritte come `@utility` e non dentro `@layer components`: in Tailwind v4
+ * `@apply` non può riferirsi a un'altra classe custom, quindi ogni variante di
+ * bottone ripete le utility di base invece di comporre `.btn`.
+ */
+@utility container-page {
+  @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+}
+
+@utility btn {
+  @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  @apply bg-brand-600 text-white hover:bg-brand-700;
+}
+
+@utility btn-secondary {
+  @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  @apply border border-line bg-white text-ink hover:bg-surface-alt;
+}
+
+@utility btn-ghost {
+  @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  @apply text-muted hover:bg-surface-alt hover:text-ink;
+}
+
+@utility btn-danger {
+  @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  @apply border border-red-200 bg-white text-red-700 hover:bg-red-50;
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:border-brand-500 focus:outline-none;
+}
+
+@utility label {
+  @apply mb-1.5 block text-sm font-medium text-ink;
+}
+
+@utility card {
+  @apply rounded-xl border border-line bg-white;
+}
+
+@utility badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+}

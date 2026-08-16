@@ -1,0 +1,185 @@
+---
+import '~/styles/global.css'
+import { api } from '~/lib/api'
+import type { Collection } from '@ecom/shared'
+
+export interface Props {
+  /** Titolo completo della pagina (già pronto per <title>, senza suffisso automatico). */
+  title: string
+  description: string
+  ogImage?: string
+  noindex?: boolean
+}
+
+const { title, description, ogImage, noindex = false } = Astro.props
+
+const siteName = import.meta.env.PUBLIC_SITE_NAME || 'Ecom Custom'
+const siteUrl = (import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321').replace(/\/$/, '')
+const canonicalURL = new URL(Astro.url.pathname, siteUrl)
+
+let collections: Collection[] = []
+try {
+  collections = await api.collections()
+} catch (err) {
+  console.error('[layout] impossibile caricare le collezioni per la nav', err)
+}
+
+const cart = Astro.locals.cart
+const cartCount = cart?.itemCount ?? 0
+const currentQuery = Astro.url.searchParams.get('q') ?? ''
+const year = new Date().getFullYear()
+---
+
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title}</title>
+  <meta name="description" content={description} />
+  <link rel="canonical" href={canonicalURL.href} />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  {noindex && <meta name="robots" content="noindex, nofollow" />}
+
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content={siteName} />
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:url" content={canonicalURL.href} />
+  {ogImage && <meta property="og:image" content={ogImage} />}
+  <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
+  <meta name="twitter:title" content={title} />
+  <meta name="twitter:description" content={description} />
+  {ogImage && <meta name="twitter:image" content={ogImage} />}
+</head>
+<body class="flex min-h-screen flex-col">
+  <a
+    href="#main-content"
+    class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-white"
+  >
+    Vai al contenuto
+  </a>
+
+  <header class="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur">
+    <input type="checkbox" id="nav-toggle" class="peer hidden" />
+
+    <div class="container-page flex h-16 items-center gap-4">
+      <a href="/" class="shrink-0 text-lg font-bold tracking-tight text-ink">
+        {siteName}
+      </a>
+
+      <nav aria-label="Collezioni" class="hidden items-center gap-6 text-sm lg:flex">
+        <a href="/catalogo" class="text-muted transition-colors hover:text-ink">Tutti i prodotti</a>
+        {collections.map((c) => (
+          <a href={`/catalogo/${c.slug}`} class="text-muted transition-colors hover:text-ink">
+            {c.title}
+          </a>
+        ))}
+      </nav>
+
+      <form action="/catalogo" method="get" class="ml-auto hidden max-w-xs flex-1 md:flex">
+        <label for="q" class="sr-only">Cerca prodotti</label>
+        <input
+          id="q"
+          type="search"
+          name="q"
+          value={currentQuery}
+          placeholder="Cerca prodotti…"
+          class="input"
+        />
+      </form>
+
+      <a
+        href="/carrello"
+        class="relative inline-flex items-center justify-center rounded-lg p-2.5 text-ink hover:bg-surface-alt"
+        aria-label={`Carrello, ${cartCount} articoli`}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="9" cy="21" r="1"></circle>
+          <circle cx="20" cy="21" r="1"></circle>
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+        </svg>
+        <span
+          data-cart-badge
+          hidden={cartCount === 0}
+          class="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-semibold text-white"
+        >
+          {cartCount}
+        </span>
+      </a>
+
+      <label
+        for="nav-toggle"
+        class="inline-flex cursor-pointer items-center justify-center rounded-lg p-2.5 text-ink hover:bg-surface-alt lg:hidden"
+        aria-label="Apri il menu"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </label>
+    </div>
+
+    <nav aria-label="Collezioni (mobile)" class="hidden flex-col gap-1 border-t border-line px-4 py-4 peer-checked:flex lg:hidden">
+      <form action="/catalogo" method="get" class="mb-3 flex">
+        <label for="q-mobile" class="sr-only">Cerca prodotti</label>
+        <input id="q-mobile" type="search" name="q" value={currentQuery} placeholder="Cerca prodotti…" class="input" />
+      </form>
+      <a href="/catalogo" class="rounded-lg px-3 py-2 text-sm text-ink hover:bg-surface-alt">Tutti i prodotti</a>
+      {collections.map((c) => (
+        <a href={`/catalogo/${c.slug}`} class="rounded-lg px-3 py-2 text-sm text-ink hover:bg-surface-alt">
+          {c.title}
+        </a>
+      ))}
+    </nav>
+  </header>
+
+  <main id="main-content" class="flex-1">
+    <slot />
+  </main>
+
+  <footer class="border-t border-line bg-surface-alt">
+    <div class="container-page grid gap-8 py-12 sm:grid-cols-2 lg:grid-cols-4">
+      <div>
+        <p class="text-lg font-bold text-ink">{siteName}</p>
+        <p class="mt-2 text-sm text-muted">
+          Prodotti selezionati, spediti con cura in tutta Italia.
+        </p>
+      </div>
+      <div>
+        <p class="text-sm font-semibold text-ink">Negozio</p>
+        <ul class="mt-3 space-y-2 text-sm text-muted">
+          <li><a href="/catalogo" class="hover:text-ink">Catalogo</a></li>
+          {collections.slice(0, 4).map((c) => (
+            <li><a href={`/catalogo/${c.slug}`} class="hover:text-ink">{c.title}</a></li>
+          ))}
+        </ul>
+      </div>
+      <div>
+        <p class="text-sm font-semibold text-ink">Assistenza</p>
+        <ul class="mt-3 space-y-2 text-sm text-muted">
+          <li><a href="/carrello" class="hover:text-ink">Il tuo carrello</a></li>
+          <li>Spedizioni e resi</li>
+          <li>Contatti</li>
+        </ul>
+      </div>
+      <div>
+        <p class="text-sm font-semibold text-ink">Pagamenti sicuri</p>
+        <p class="mt-3 text-sm text-muted">Checkout gestito da Stripe. Nessun dato di pagamento passa dai nostri server.</p>
+      </div>
+    </div>
+    <div class="border-t border-line py-4">
+      <p class="container-page text-xs text-muted">© {year} {siteName}. Tutti i diritti riservati.</p>
+    </div>
+  </footer>
+
+  <div
+    data-toast
+    role="status"
+    aria-live="polite"
+    hidden
+    class="fixed bottom-4 right-4 z-50 max-w-xs rounded-lg border px-4 py-3 text-sm font-medium shadow-lg data-[variant=error]:border-red-200 data-[variant=error]:bg-red-50 data-[variant=error]:text-red-700 data-[variant=success]:border-brand-200 data-[variant=success]:bg-brand-50 data-[variant=success]:text-brand-800"
+  >
+  </div>
+</body>
+</html>

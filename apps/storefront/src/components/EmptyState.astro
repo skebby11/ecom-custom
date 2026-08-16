@@ -1,0 +1,23 @@
+---
+export interface Props {
+  title: string
+  description?: string
+  ctaHref?: string
+  ctaLabel?: string
+}
+
+const { title, description, ctaHref, ctaLabel } = Astro.props
+---
+
+<div class="flex flex-col items-center gap-3 rounded-[--radius-card] border border-dashed border-line px-6 py-16 text-center">
+  <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-muted" aria-hidden="true">
+    <circle cx="9" cy="21" r="1"></circle>
+    <circle cx="20" cy="21" r="1"></circle>
+    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+  </svg>
+  <p class="text-lg font-semibold text-ink">{title}</p>
+  {description && <p class="max-w-sm text-sm text-muted">{description}</p>}
+  {ctaHref && ctaLabel && (
+    <a href={ctaHref} class="btn-primary mt-2">{ctaLabel}</a>
+  )}
+</div>

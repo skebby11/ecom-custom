@@ -1,0 +1,124 @@
+---
+import Layout from '~/layouts/Layout.astro'
+import { formatPrice } from '@ecom/shared/format'
+import { api } from '~/lib/api'
+
+const { id } = Astro.params
+const token = Astro.url.searchParams.get('token')
+
+if (!id || !token) return Astro.redirect('/404')
+
+const order = await api.order(id, token)
+if (!order) return Astro.redirect('/404')
+
+const statusLabels: Record<string, string> = {
+  pending: 'Pagamento in elaborazione',
+  paid: 'Pagato',
+  failed: 'Pagamento non riuscito',
+  fulfilled: 'Spedito',
+  cancelled: 'Annullato',
+}
+
+const isPending = order.status === 'pending'
+---
+
+<Layout title={`Ordine ${order.number}`} description="Dettaglio e stato del tuo ordine." noindex>
+  <div class="container-page py-10">
+    <div class="mx-auto max-w-2xl">
+      <h1 class="text-3xl font-bold text-ink">Grazie per il tuo ordine!</h1>
+      <p class="mt-1 text-sm text-muted">Ordine n. {order.number}</p>
+
+      <p
+        data-order-status
+        data-status={order.status}
+        class="mt-4 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium data-[status=paid]:bg-green-100 data-[status=paid]:text-green-800 data-[status=pending]:bg-yellow-100 data-[status=pending]:text-yellow-800 data-[status=failed]:bg-red-100 data-[status=failed]:text-red-800 data-[status=fulfilled]:bg-brand-100 data-[status=fulfilled]:text-brand-800 data-[status=cancelled]:bg-surface-alt data-[status=cancelled]:text-muted"
+      >
+        {statusLabels[order.status] ?? order.status}
+      </p>
+
+      {isPending && (
+        <p data-pending-note class="mt-2 text-sm text-muted">
+          Stiamo confermando il pagamento con la banca: aggiorniamo automaticamente questa pagina appena arriva la conferma.
+        </p>
+      )}
+
+      <div class="mt-8 rounded-[--radius-card] border border-line">
+        <ul class="divide-y divide-line">
+          {order.items.map((item) => (
+            <li class="flex gap-4 p-4">
+              <img
+                src={item.imageUrl ?? '/placeholder-product.svg'}
+                alt={item.productTitle}
+                width="72"
+                height="72"
+                loading="lazy"
+                class="h-[72px] w-[72px] shrink-0 rounded-lg border border-line object-cover"
+              />
+              <div class="flex flex-1 flex-col">
+                <p class="font-medium text-ink">{item.productTitle}</p>
+                <p class="text-sm text-muted">{item.variantTitle} · × {item.qty}</p>
+              </div>
+              <p class="whitespace-nowrap font-semibold text-ink">{formatPrice(item.lineTotalCents)}</p>
+            </li>
+          ))}
+        </ul>
+        <dl class="space-y-2 border-t border-line p-4 text-sm">
+          <div class="flex justify-between">
+            <dt class="text-muted">Subtotale</dt>
+            <dd class="text-ink">{formatPrice(order.subtotalCents)}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-muted">Spedizione</dt>
+            <dd class="text-ink">{order.shippingCents === 0 ? 'Gratuita' : formatPrice(order.shippingCents)}</dd>
+          </div>
+          <div class="flex justify-between border-t border-line pt-2 text-base font-semibold">
+            <dt class="text-ink">Totale</dt>
+            <dd class="text-ink">{formatPrice(order.totalCents)}</dd>
+          </div>
+        </dl>
+      </div>
+
+      {order.shippingAddress && (
+        <div class="mt-8">
+          <h2 class="text-lg font-semibold text-ink">Indirizzo di spedizione</h2>
+          <address class="mt-2 text-sm not-italic text-muted">
+            {order.shippingAddress.name}<br />
+            {order.shippingAddress.line1}{order.shippingAddress.line2 ? `, ${order.shippingAddress.line2}` : ''}<br />
+            {order.shippingAddress.postalCode} {order.shippingAddress.city}
+            {order.shippingAddress.province ? ` (${order.shippingAddress.province})` : ''}<br />
+            {order.shippingAddress.country}
+          </address>
+        </div>
+      )}
+
+      <a href="/catalogo" class="btn-secondary mt-8">Continua lo shopping</a>
+    </div>
+  </div>
+
+  {isPending && (
+    <script define:vars={{ orderId: id, token, apiUrl: import.meta.env.PUBLIC_API_URL || 'http://localhost:3001' }}>
+      // Il webhook Stripe può arrivare con qualche secondo di ritardo: ricontrolliamo
+      // lo stato dell'ordine ogni 3s (max 10 tentativi) e ricarichiamo quando cambia.
+      let attempts = 0
+      const maxAttempts = 10
+
+      const timer = setInterval(async () => {
+        attempts += 1
+        try {
+          const res = await fetch(`${apiUrl}/api/orders/${orderId}?token=${encodeURIComponent(token)}`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.status !== 'pending') {
+              clearInterval(timer)
+              window.location.reload()
+              return
+            }
+          }
+        } catch {
+          // ignora errori di rete, riprova al prossimo giro
+        }
+        if (attempts >= maxAttempts) clearInterval(timer)
+      }, 3000)
+    </script>
+  )}
+</Layout>

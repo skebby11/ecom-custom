@@ -1,0 +1,234 @@
+---
+import type { ProductDetail } from '@ecom/shared'
+import { formatPrice } from '@ecom/shared/format'
+
+export interface Props {
+  product: ProductDetail
+}
+
+const { product } = Astro.props
+
+// Variante di default: la prima con stock disponibile, altrimenti la prima in assoluto.
+const defaultVariant = product.variants.find((v) => v.stock > 0) ?? product.variants[0]
+
+// Mappa valueId -> optionId, per sapere sotto quale option ricade ogni valore selezionato.
+const valueToOption = new Map<number, number>()
+for (const option of product.options) {
+  for (const value of option.values) valueToOption.set(value.id, option.id)
+}
+
+const defaultSelection = new Map<number, number>()
+for (const valueId of defaultVariant?.optionValueIds ?? []) {
+  const optionId = valueToOption.get(valueId)
+  if (optionId != null) defaultSelection.set(optionId, valueId)
+}
+
+const hasDiscount = Boolean(
+  defaultVariant && defaultVariant.compareAtCents != null && defaultVariant.compareAtCents > defaultVariant.priceCents
+)
+
+function availabilityLabel(stock: number): string {
+  if (stock <= 0) return 'Esaurito'
+  if (stock <= 5) return `Ultimi ${stock} pezzi`
+  return 'Disponibile'
+}
+---
+
+<div data-variant-root class="flex flex-col gap-5">
+  <script type="application/json" id="variant-data" set:html={JSON.stringify(product.variants)} />
+
+  <div class="flex items-baseline gap-3">
+    <span data-price class="text-2xl font-bold text-ink">
+      {formatPrice(defaultVariant?.priceCents ?? 0)}
+    </span>
+    <span data-compare-price hidden={!hasDiscount} class="text-base text-muted line-through">
+      {formatPrice(defaultVariant?.compareAtCents ?? 0)}
+    </span>
+  </div>
+
+  <p data-availability class="text-sm font-medium text-ink" data-state={defaultVariant && defaultVariant.stock > 0 ? 'in' : 'out'}>
+    {defaultVariant ? availabilityLabel(defaultVariant.stock) : 'Non disponibile'}
+  </p>
+
+  {product.options.map((option) => (
+    <fieldset class="flex flex-col gap-2">
+      <legend class="label">{option.name}</legend>
+      <div class="flex flex-wrap gap-2">
+        {option.values.map((value) => {
+          const inputId = `opt-${option.id}-${value.id}`
+          const checked = defaultSelection.get(option.id) === value.id
+          return (
+            <div>
+              <input
+                type="radio"
+                name={`option-${option.id}`}
+                id={inputId}
+                value={value.id}
+                data-option-id={option.id}
+                data-value-id={value.id}
+                checked={checked}
+                class="peer sr-only"
+              />
+              <label
+                for={inputId}
+                class="inline-flex cursor-pointer items-center rounded-lg border border-line px-3 py-2 text-sm text-ink transition-colors peer-checked:border-brand-600 peer-checked:bg-brand-50 peer-checked:text-brand-800 peer-disabled:cursor-not-allowed peer-disabled:opacity-40"
+              >
+                {value.value}
+              </label>
+            </div>
+          )
+        })}
+      </div>
+    </fieldset>
+  ))}
+
+  <dl class="flex gap-2 text-xs text-muted">
+    <dt class="font-medium">SKU:</dt>
+    <dd data-sku>{defaultVariant?.sku ?? '—'}</dd>
+  </dl>
+
+  <div class="flex items-end gap-3">
+    <div>
+      <label for="qty" class="label">Quantità</label>
+      <div class="flex items-center gap-1">
+        <button type="button" data-qty-dec class="btn-secondary h-10 w-10 !px-0" aria-label="Diminuisci quantità">−</button>
+        <input
+          id="qty"
+          type="number"
+          data-qty-input
+          value="1"
+          min="1"
+          max={Math.max(defaultVariant?.stock ?? 1, 1)}
+          class="input w-16 text-center"
+        />
+        <button type="button" data-qty-inc class="btn-secondary h-10 w-10 !px-0" aria-label="Aumenta quantità">+</button>
+      </div>
+    </div>
+
+    <button
+      type="button"
+      data-add-to-cart
+      data-variant-id={defaultVariant?.id ?? ''}
+      disabled={!defaultVariant || defaultVariant.stock <= 0}
+      class="btn-primary flex-1"
+    >
+      Aggiungi al carrello
+    </button>
+  </div>
+</div>
+
+<script>
+  import { addToCart } from '~/lib/cart-client'
+
+  interface VariantData {
+    id: number
+    sku: string
+    priceCents: number
+    compareAtCents: number | null
+    stock: number
+    optionValueIds: number[]
+  }
+
+  const root = document.querySelector<HTMLElement>('[data-variant-root]')
+  if (root) {
+    const dataEl = document.getElementById('variant-data')
+    const variants: VariantData[] = dataEl?.textContent ? JSON.parse(dataEl.textContent) : []
+
+    const radios = Array.from(root.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
+    const priceEl = root.querySelector<HTMLElement>('[data-price]')
+    const compareEl = root.querySelector<HTMLElement>('[data-compare-price]')
+    const skuEl = root.querySelector<HTMLElement>('[data-sku]')
+    const availEl = root.querySelector<HTMLElement>('[data-availability]')
+    const addBtn = root.querySelector<HTMLButtonElement>('[data-add-to-cart]')
+    const qtyInput = root.querySelector<HTMLInputElement>('[data-qty-input]')
+    const qtyDec = root.querySelector<HTMLButtonElement>('[data-qty-dec]')
+    const qtyInc = root.querySelector<HTMLButtonElement>('[data-qty-inc]')
+
+    const formatPriceLocal = (cents: number) =>
+      new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(cents / 100)
+
+    function getSelection(): Record<string, number> {
+      const sel: Record<string, number> = {}
+      radios.forEach((r) => {
+        if (r.checked) sel[r.dataset.optionId!] = Number(r.dataset.valueId)
+      })
+      return sel
+    }
+
+    function findVariant(idsByOption: Record<string, number>): VariantData | undefined {
+      const ids = Object.values(idsByOption)
+      return variants.find(
+        (v) => v.optionValueIds.length === ids.length && ids.every((id) => v.optionValueIds.includes(id))
+      )
+    }
+
+    function statusFor(optionId: string, valueId: number, selection: Record<string, number>) {
+      const candidate = { ...selection, [optionId]: valueId }
+      const variant = findVariant(candidate)
+      if (!variant) return 'unavailable'
+      return variant.stock > 0 ? 'available' : 'out'
+    }
+
+    function render() {
+      const selection = getSelection()
+
+      radios.forEach((r) => {
+        const status = statusFor(r.dataset.optionId!, Number(r.dataset.valueId), selection)
+        const label = root.querySelector<HTMLLabelElement>(`label[for="${r.id}"]`)
+        r.disabled = status !== 'available'
+        label?.classList.toggle('line-through', status === 'out')
+      })
+
+      const variant = findVariant(selection)
+
+      if (!variant) {
+        if (addBtn) addBtn.disabled = true
+        if (availEl) availEl.textContent = 'Combinazione non disponibile'
+        return
+      }
+
+      if (priceEl) priceEl.textContent = formatPriceLocal(variant.priceCents)
+      if (compareEl) {
+        const discounted = variant.compareAtCents != null && variant.compareAtCents > variant.priceCents
+        compareEl.hidden = !discounted
+        if (discounted) compareEl.textContent = formatPriceLocal(variant.compareAtCents!)
+      }
+      if (skuEl) skuEl.textContent = variant.sku
+      if (qtyInput) {
+        qtyInput.max = String(Math.max(variant.stock, 1))
+        if (Number(qtyInput.value) > variant.stock && variant.stock > 0) qtyInput.value = String(variant.stock)
+      }
+      if (availEl) {
+        availEl.textContent =
+          variant.stock <= 0 ? 'Esaurito' : variant.stock <= 5 ? `Ultimi ${variant.stock} pezzi` : 'Disponibile'
+      }
+      if (addBtn) {
+        addBtn.dataset.variantId = String(variant.id)
+        addBtn.disabled = variant.stock <= 0
+      }
+    }
+
+    radios.forEach((r) => r.addEventListener('change', render))
+    render()
+
+    qtyDec?.addEventListener('click', () => {
+      if (!qtyInput) return
+      const next = Math.max(Number(qtyInput.min || '1'), Number(qtyInput.value) - 1)
+      qtyInput.value = String(next)
+    })
+    qtyInc?.addEventListener('click', () => {
+      if (!qtyInput) return
+      const next = Math.min(Number(qtyInput.max || '99'), Number(qtyInput.value) + 1)
+      qtyInput.value = String(next)
+    })
+
+    addBtn?.addEventListener('click', async () => {
+      const variantId = Number(addBtn.dataset.variantId)
+      const qty = Math.max(1, Number(qtyInput?.value ?? 1))
+      if (!variantId) return
+      addBtn.disabled = true
+      await addToCart(variantId, qty)
+      addBtn.disabled = false
+    })
+  }
+</script>

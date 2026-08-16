@@ -1,0 +1,117 @@
+---
+import Layout from '~/layouts/Layout.astro'
+import ProductCard from '~/components/ProductCard.astro'
+import CollectionCard from '~/components/CollectionCard.astro'
+import { api } from '~/lib/api'
+import { formatPrice, FREE_SHIPPING_THRESHOLD_CENTS } from '@ecom/shared/format'
+import type { Collection, ProductListItem } from '@ecom/shared'
+
+const siteName = import.meta.env.PUBLIC_SITE_NAME || 'Ecom Custom'
+
+let collections: Collection[] = []
+let newProducts: ProductListItem[] = []
+
+try {
+  collections = await api.collections()
+} catch (err) {
+  console.error('[home] impossibile caricare le collezioni', err)
+}
+
+try {
+  const res = await api.products({ limit: 8, sort: 'new' })
+  newProducts = res.items
+} catch (err) {
+  console.error('[home] impossibile caricare le novità', err)
+}
+
+const siteUrl = (import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321').replace(/\/$/, '')
+
+const organizationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: siteName,
+  url: siteUrl,
+}
+---
+
+<Layout
+  title={`${siteName} — negozio online`}
+  description={`Scopri il catalogo di ${siteName}: prodotti selezionati, spedizione rapida e pagamenti sicuri.`}
+>
+  <script type="application/ld+json" set:html={JSON.stringify(organizationJsonLd)} />
+
+  <section class="relative overflow-hidden bg-ink">
+    <img
+      src="https://picsum.photos/seed/ecom-hero/1600/900"
+      alt="Selezione di prodotti in evidenza"
+      width="1600"
+      height="900"
+      loading="eager"
+      fetchpriority="high"
+      class="absolute inset-0 h-full w-full object-cover opacity-60"
+    />
+    <div class="relative container-page flex min-h-[420px] flex-col items-start justify-center gap-5 py-20 text-white">
+      <h1 class="max-w-xl text-4xl font-bold leading-tight sm:text-5xl">
+        Prodotti selezionati, per chi non si accontenta.
+      </h1>
+      <p class="max-w-lg text-base text-white/85">
+        Scopri le nostre collezioni e trova pezzi pensati per durare, spediti in tutta Italia.
+      </p>
+      <a href="/catalogo" class="btn-primary">Scopri il catalogo</a>
+    </div>
+  </section>
+
+  <section class="container-page py-14">
+    <h2 class="text-2xl font-bold text-ink">Collezioni</h2>
+    {collections.length === 0 ? (
+      <p class="mt-4 text-sm text-muted">Le collezioni non sono al momento disponibili.</p>
+    ) : (
+      <div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {collections.map((c, i) => <CollectionCard collection={c} priority={i === 0} />)}
+      </div>
+    )}
+  </section>
+
+  <section class="container-page py-14">
+    <div class="flex items-baseline justify-between">
+      <h2 class="text-2xl font-bold text-ink">Novità</h2>
+      <a href="/catalogo?sort=new" class="text-sm font-medium text-brand-600 hover:text-brand-700">Vedi tutto</a>
+    </div>
+    {newProducts.length === 0 ? (
+      <p class="mt-4 text-sm text-muted">Nessun nuovo prodotto al momento.</p>
+    ) : (
+      <div class="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
+        {newProducts.map((p, i) => <ProductCard product={p} priority={i < 4} />)}
+      </div>
+    )}
+  </section>
+
+  <section class="container-page grid gap-6 border-t border-line py-14 sm:grid-cols-3">
+    <div class="flex flex-col gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="text-brand-600" aria-hidden="true">
+        <rect x="1" y="3" width="15" height="13"></rect>
+        <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+        <circle cx="5.5" cy="18.5" r="2.5"></circle>
+        <circle cx="18.5" cy="18.5" r="2.5"></circle>
+      </svg>
+      <h3 class="font-semibold text-ink">Spedizione gratuita</h3>
+      <p class="text-sm text-muted">Gratis sopra i {formatPrice(FREE_SHIPPING_THRESHOLD_CENTS)} di spesa.</p>
+    </div>
+    <div class="flex flex-col gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="text-brand-600" aria-hidden="true">
+        <path d="M3 12a9 9 0 1 0 9-9"></path>
+        <polyline points="3 4 3 12 11 12"></polyline>
+      </svg>
+      <h3 class="font-semibold text-ink">Resi facili</h3>
+      <p class="text-sm text-muted">30 giorni per cambiare idea, senza pensieri.</p>
+    </div>
+    <div class="flex flex-col gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="text-brand-600" aria-hidden="true">
+        <rect x="1" y="4" width="22" height="16" rx="2"></rect>
+        <line x1="1" y1="10" x2="23" y2="10"></line>
+      </svg>
+      <h3 class="font-semibold text-ink">Pagamenti sicuri</h3>
+      <p class="text-sm text-muted">Checkout protetto con Stripe.</p>
+    </div>
+  </section>
+</Layout>

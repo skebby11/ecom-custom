@@ -1,0 +1,99 @@
+---
+import Layout from '~/layouts/Layout.astro'
+import Breadcrumb from '~/components/Breadcrumb.astro'
+import Gallery from '~/components/Gallery.astro'
+import VariantSelector from '~/components/VariantSelector.astro'
+import { api } from '~/lib/api'
+
+const { slug } = Astro.params
+if (!slug) return Astro.redirect('/404')
+
+const product = await api.product(slug)
+if (!product) return Astro.redirect('/404')
+
+const defaultVariant = product.variants.find((v) => v.stock > 0) ?? product.variants[0]
+const primaryCollection = product.collections[0]
+const siteUrl = (import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321').replace(/\/$/, '')
+const canonicalUrl = `${siteUrl}/p/${product.slug}`
+const primaryImage = product.images[0]?.url
+
+const breadcrumbItems = [
+  { label: 'Catalogo', href: '/catalogo' },
+  ...(primaryCollection ? [{ label: primaryCollection.title, href: `/catalogo/${primaryCollection.slug}` }] : []),
+  { label: product.title },
+]
+
+const productJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: product.title,
+  description: product.description ?? product.excerpt ?? undefined,
+  sku: defaultVariant?.sku,
+  image: product.images.map((img) => img.url),
+  offers: {
+    '@type': 'Offer',
+    url: canonicalUrl,
+    priceCurrency: 'EUR',
+    price: ((defaultVariant?.priceCents ?? 0) / 100).toFixed(2),
+    availability:
+      defaultVariant && defaultVariant.stock > 0
+        ? 'https://schema.org/InStock'
+        : 'https://schema.org/OutOfStock',
+  },
+}
+
+const breadcrumbJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Catalogo', item: `${siteUrl}/catalogo` },
+    ...(primaryCollection
+      ? [
+          {
+            '@type': 'ListItem',
+            position: 2,
+            name: primaryCollection.title,
+            item: `${siteUrl}/catalogo/${primaryCollection.slug}`,
+          },
+        ]
+      : []),
+    {
+      '@type': 'ListItem',
+      position: primaryCollection ? 3 : 2,
+      name: product.title,
+      item: canonicalUrl,
+    },
+  ],
+}
+---
+
+<Layout
+  title={`${product.title} — Acquista online`}
+  description={product.excerpt ?? product.description ?? product.title}
+  ogImage={primaryImage}
+>
+  <script type="application/ld+json" set:html={JSON.stringify(productJsonLd)} />
+  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)} />
+
+  <div class="container-page py-10">
+    <Breadcrumb items={breadcrumbItems} />
+
+    <div class="mt-6 grid grid-cols-1 gap-10 lg:grid-cols-2">
+      <Gallery images={product.images} productTitle={product.title} />
+
+      <div>
+        <h1 class="text-3xl font-bold text-ink">{product.title}</h1>
+
+        <div class="mt-6">
+          <VariantSelector product={product} />
+        </div>
+
+        {product.description && (
+          <div class="mt-8 border-t border-line pt-6 text-sm leading-relaxed text-ink">
+            {product.description.split('\n').map((paragraph) => paragraph.trim() && <p class="mb-3">{paragraph}</p>)}
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+</Layout>

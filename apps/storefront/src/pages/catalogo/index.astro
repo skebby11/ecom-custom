@@ -1,0 +1,80 @@
+---
+import Layout from '~/layouts/Layout.astro'
+import ProductCard from '~/components/ProductCard.astro'
+import PlpFilters from '~/components/PlpFilters.astro'
+import Pagination from '~/components/Pagination.astro'
+import EmptyState from '~/components/EmptyState.astro'
+import { api } from '~/lib/api'
+import { productSortValues } from '@ecom/shared/format'
+import type { Collection, Paginated, ProductListItem, ProductSort } from '@ecom/shared'
+
+const url = Astro.url
+const q = url.searchParams.get('q')?.trim() || undefined
+const sortParam = url.searchParams.get('sort')
+const sort: ProductSort = productSortValues.includes(sortParam as ProductSort) ? (sortParam as ProductSort) : 'new'
+const page = Math.max(1, Number(url.searchParams.get('page') ?? '1') || 1)
+const collection = url.searchParams.get('collection')?.trim() || undefined
+const inStock = url.searchParams.get('inStock') === 'true' ? true : undefined
+
+let result: Paginated<ProductListItem> = { items: [], total: 0, page: 1, pages: 1, limit: 12 }
+let collections: Collection[] = []
+let loadError = false
+
+try {
+  ;[result, collections] = await Promise.all([
+    api.products({ q, sort, page, collection, inStock, limit: 12 }),
+    api.collections(),
+  ])
+} catch (err) {
+  console.error('[plp] impossibile caricare i prodotti', err)
+  loadError = true
+}
+
+const itemListJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  itemListElement: result.items.map((p, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    url: `${(import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321').replace(/\/$/, '')}/p/${p.slug}`,
+  })),
+}
+---
+
+<Layout title="Catalogo — tutti i prodotti" description="Sfoglia tutti i prodotti disponibili, filtra per collezione e disponibilità.">
+  <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />
+
+  <div class="container-page py-10">
+    <h1 class="text-3xl font-bold text-ink">Catalogo</h1>
+    <p class="mt-2 text-sm text-muted">{result.total} prodotti trovati</p>
+
+    <div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[260px_1fr]">
+      <aside>
+        <PlpFilters actionPath="/catalogo" collections={collections} current={{ q, sort, collection, inStock }} />
+      </aside>
+
+      <div>
+        {loadError ? (
+          <EmptyState
+            title="Catalogo non disponibile"
+            description="Non riusciamo a contattare il negozio in questo momento. Riprova tra poco."
+          />
+        ) : result.items.length === 0 ? (
+          <EmptyState
+            title={q ? `Nessun risultato per “${q}”` : 'Nessun prodotto trovato'}
+            description="Prova a modificare i filtri o la ricerca."
+            ctaHref="/catalogo"
+            ctaLabel="Azzera i filtri"
+          />
+        ) : (
+          <>
+            <div class="grid grid-cols-2 gap-5 sm:grid-cols-3 xl:grid-cols-4">
+              {result.items.map((p, i) => <ProductCard product={p} priority={i < 4} />)}
+            </div>
+            <Pagination url={url} page={result.page} pages={result.pages} />
+          </>
+        )}
+      </div>
+    </div>
+  </div>
+</Layout>

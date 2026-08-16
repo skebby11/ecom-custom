@@ -1,0 +1,19 @@
+---
+import Layout from '~/layouts/Layout.astro'
+
+Astro.response.status = 404
+---
+
+<Layout title="Pagina non trovata" description="La pagina richiesta non esiste o è stata rimossa." noindex>
+  <div class="container-page flex flex-col items-center gap-4 py-24 text-center">
+    <p class="text-sm font-semibold uppercase tracking-wide text-brand-600">Errore 404</p>
+    <h1 class="text-3xl font-bold text-ink">Pagina non trovata</h1>
+    <p class="max-w-md text-sm text-muted">
+      Il prodotto, la collezione o la pagina che cerchi non esiste più, oppure l'indirizzo non è corretto.
+    </p>
+    <div class="mt-2 flex gap-3">
+      <a href="/" class="btn-primary">Torna alla home</a>
+      <a href="/catalogo" class="btn-secondary">Vai al catalogo</a>
+    </div>
+  </div>
+</Layout>

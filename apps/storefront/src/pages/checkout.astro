@@ -1,0 +1,206 @@
+---
+import Layout from '~/layouts/Layout.astro'
+import EmptyState from '~/components/EmptyState.astro'
+import { formatPrice } from '@ecom/shared/format'
+
+const cart = Astro.locals.cart
+---
+
+<Layout title="Checkout" description="Completa l'ordine inserendo i tuoi dati di spedizione." noindex>
+  <div class="container-page py-10">
+    <h1 class="text-3xl font-bold text-ink">Checkout</h1>
+
+    {!cart || cart.items.length === 0 ? (
+      <div class="mt-8">
+        <EmptyState
+          title="Il carrello è vuoto"
+          description="Aggiungi qualche prodotto prima di procedere al checkout."
+          ctaHref="/catalogo"
+          ctaLabel="Vai al catalogo"
+        />
+      </div>
+    ) : (
+      <div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
+        <div>
+          <div
+            data-stripe-banner
+            hidden
+            class="mb-6 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-900"
+          >
+            <strong class="font-semibold">Stripe non è ancora configurato:</strong>
+            inserisci le chiavi <code>STRIPE_SECRET_KEY</code> / <code>STRIPE_PUBLISHABLE_KEY</code> nel file
+            <code>.env</code> per abilitare i pagamenti. Non è un errore del sito: manca solo la configurazione.
+          </div>
+
+          <div data-generic-error hidden class="mb-6 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"></div>
+
+          <form data-checkout-form class="flex flex-col gap-6" novalidate>
+            <input type="hidden" name="cartId" value={cart.id} />
+
+            <fieldset class="flex flex-col gap-4">
+              <legend class="text-lg font-semibold text-ink">Contatto</legend>
+              <div>
+                <label for="email" class="label">Email</label>
+                <input id="email" name="email" type="email" required class="input" autocomplete="email" />
+              </div>
+            </fieldset>
+
+            <fieldset class="flex flex-col gap-4">
+              <legend class="text-lg font-semibold text-ink">Indirizzo di spedizione</legend>
+
+              <div>
+                <label for="name" class="label">Nome e cognome</label>
+                <input id="name" name="name" type="text" required minlength="2" class="input" autocomplete="name" />
+              </div>
+
+              <div>
+                <label for="line1" class="label">Indirizzo</label>
+                <input id="line1" name="line1" type="text" required minlength="2" class="input" autocomplete="address-line1" />
+              </div>
+
+              <div>
+                <label for="line2" class="label">Indirizzo (opzionale)</label>
+                <input id="line2" name="line2" type="text" class="input" autocomplete="address-line2" />
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label for="city" class="label">Città</label>
+                  <input id="city" name="city" type="text" required minlength="2" class="input" autocomplete="address-level2" />
+                </div>
+                <div>
+                  <label for="postalCode" class="label">CAP</label>
+                  <input id="postalCode" name="postalCode" type="text" required minlength="3" class="input" autocomplete="postal-code" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label for="province" class="label">Provincia (opzionale)</label>
+                  <input id="province" name="province" type="text" class="input" autocomplete="address-level1" />
+                </div>
+                <div>
+                  <label for="country" class="label">Paese</label>
+                  <select id="country" name="country" class="input" autocomplete="country">
+                    <option value="IT" selected>Italia</option>
+                    <option value="FR">Francia</option>
+                    <option value="DE">Germania</option>
+                    <option value="ES">Spagna</option>
+                    <option value="CH">Svizzera</option>
+                    <option value="AT">Austria</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label for="phone" class="label">Telefono (opzionale)</label>
+                <input id="phone" name="phone" type="tel" class="input" autocomplete="tel" />
+              </div>
+            </fieldset>
+
+            <button type="submit" data-submit class="btn-primary">Procedi al pagamento</button>
+          </form>
+        </div>
+
+        <aside class="card h-fit p-6">
+          <h2 class="text-lg font-semibold text-ink">Riepilogo ordine</h2>
+          <ul class="mt-4 flex flex-col gap-3 text-sm">
+            {cart.items.map((item) => (
+              <li class="flex justify-between gap-3">
+                <span class="text-ink">{item.productTitle} <span class="text-muted">× {item.qty}</span></span>
+                <span class="whitespace-nowrap text-ink">{formatPrice(item.lineTotalCents)}</span>
+              </li>
+            ))}
+          </ul>
+          <dl class="mt-4 space-y-2 border-t border-line pt-4 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-muted">Subtotale</dt>
+              <dd class="text-ink">{formatPrice(cart.subtotalCents)}</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-muted">Spedizione</dt>
+              <dd class="text-ink">{cart.shippingCents === 0 ? 'Gratuita' : formatPrice(cart.shippingCents)}</dd>
+            </div>
+            <div class="flex justify-between border-t border-line pt-2 text-base font-semibold">
+              <dt class="text-ink">Totale</dt>
+              <dd class="text-ink">{formatPrice(cart.totalCents)}</dd>
+            </div>
+          </dl>
+        </aside>
+      </div>
+    )}
+  </div>
+</Layout>
+
+<script>
+  const form = document.querySelector<HTMLFormElement>('[data-checkout-form]')
+  const submitBtn = document.querySelector<HTMLButtonElement>('[data-submit]')
+  const stripeBanner = document.querySelector<HTMLElement>('[data-stripe-banner]')
+  const genericError = document.querySelector<HTMLElement>('[data-generic-error]')
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    if (!form.checkValidity()) {
+      form.reportValidity()
+      return
+    }
+
+    stripeBanner?.setAttribute('hidden', '')
+    if (genericError) genericError.hidden = true
+
+    const formData = new FormData(form)
+    const cartId = String(formData.get('cartId') ?? '')
+    const email = String(formData.get('email') ?? '')
+
+    const shippingAddress = {
+      name: String(formData.get('name') ?? ''),
+      line1: String(formData.get('line1') ?? ''),
+      line2: String(formData.get('line2') ?? '') || null,
+      city: String(formData.get('city') ?? ''),
+      postalCode: String(formData.get('postalCode') ?? ''),
+      province: String(formData.get('province') ?? '') || null,
+      country: String(formData.get('country') ?? 'IT'),
+      phone: String(formData.get('phone') ?? '') || null,
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = true
+      submitBtn.textContent = 'Attendere…'
+    }
+
+    try {
+      const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3001'
+      const res = await fetch(`${apiUrl}/api/checkout/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cartId, email, shippingAddress }),
+      })
+
+      const text = await res.text()
+      const data = text ? JSON.parse(text) : null
+
+      if (!res.ok) {
+        const code = data?.error?.code
+        if (res.status === 503 && code === 'STRIPE_NOT_CONFIGURED') {
+          stripeBanner?.removeAttribute('hidden')
+        } else if (genericError) {
+          genericError.textContent = data?.error?.message ?? 'Impossibile avviare il pagamento, riprova.'
+          genericError.hidden = false
+        }
+        return
+      }
+
+      if (data?.url) window.location.href = data.url
+    } catch (err) {
+      if (genericError) {
+        genericError.textContent = 'Impossibile contattare il server di pagamento. Riprova tra poco.'
+        genericError.hidden = false
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Procedi al pagamento'
+      }
+    }
+  })
+</script>

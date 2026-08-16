@@ -1,0 +1,132 @@
+---
+import Layout from '~/layouts/Layout.astro'
+import EmptyState from '~/components/EmptyState.astro'
+import { formatPrice, FREE_SHIPPING_THRESHOLD_CENTS } from '@ecom/shared/format'
+
+const cart = Astro.locals.cart
+const missingForFreeShipping = cart ? Math.max(0, FREE_SHIPPING_THRESHOLD_CENTS - cart.subtotalCents) : 0
+---
+
+<Layout title="Il tuo carrello" description="Rivedi gli articoli nel tuo carrello prima di andare al checkout.">
+  <div class="container-page py-10">
+    <h1 class="text-3xl font-bold text-ink">Il tuo carrello</h1>
+
+    {!cart || cart.items.length === 0 ? (
+      <div class="mt-8">
+        <EmptyState
+          title="Il carrello è vuoto"
+          description="Aggiungi qualche prodotto dal catalogo per iniziare."
+          ctaHref="/catalogo"
+          ctaLabel="Vai al catalogo"
+        />
+      </div>
+    ) : (
+      <div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
+        <ul class="flex flex-col divide-y divide-line border-y border-line">
+          {cart.items.map((item) => (
+            <li class="flex gap-4 py-5" data-cart-row data-item-id={item.id}>
+              <img
+                src={item.imageUrl ?? '/placeholder-product.svg'}
+                alt={item.productTitle}
+                width="96"
+                height="96"
+                loading="lazy"
+                class="h-24 w-24 shrink-0 rounded-lg border border-line object-cover"
+              />
+              <div class="flex flex-1 flex-col gap-1">
+                <p class="font-medium text-ink">{item.productTitle}</p>
+                <p class="text-sm text-muted">{item.variantTitle}</p>
+                <p class="text-sm text-muted">{formatPrice(item.unitPriceCents)} / cad.</p>
+                {item.availableStock < item.qty && (
+                  <p class="text-sm font-medium text-red-600">Solo {item.availableStock} disponibili</p>
+                )}
+
+                <div class="mt-2 flex items-center gap-2">
+                  <button type="button" data-qty-dec class="btn-secondary h-9 w-9 !px-0" aria-label="Diminuisci quantità">−</button>
+                  <input
+                    type="number"
+                    data-qty-input
+                    value={item.qty}
+                    min="1"
+                    max={Math.max(item.availableStock, item.qty)}
+                    aria-label={`Quantità per ${item.productTitle}`}
+                    class="input w-16 text-center"
+                  />
+                  <button type="button" data-qty-inc class="btn-secondary h-9 w-9 !px-0" aria-label="Aumenta quantità">+</button>
+                  <button type="button" data-remove class="btn-ghost ml-2 text-sm">Rimuovi</button>
+                </div>
+              </div>
+              <p class="whitespace-nowrap font-semibold text-ink">{formatPrice(item.lineTotalCents)}</p>
+            </li>
+          ))}
+        </ul>
+
+        <aside class="card h-fit p-6">
+          <h2 class="text-lg font-semibold text-ink">Riepilogo ordine</h2>
+          <dl class="mt-4 space-y-2 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-muted">Subtotale</dt>
+              <dd class="text-ink">{formatPrice(cart.subtotalCents)}</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-muted">Spedizione</dt>
+              <dd class="text-ink">{cart.shippingCents === 0 ? 'Gratuita' : formatPrice(cart.shippingCents)}</dd>
+            </div>
+            {missingForFreeShipping > 0 && (
+              <p class="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-800">
+                Ti mancano {formatPrice(missingForFreeShipping)} alla spedizione gratuita.
+              </p>
+            )}
+            <div class="flex justify-between border-t border-line pt-2 text-base font-semibold">
+              <dt class="text-ink">Totale</dt>
+              <dd class="text-ink">{formatPrice(cart.totalCents)}</dd>
+            </div>
+          </dl>
+          <a href="/checkout" class="btn-primary mt-5 w-full">Vai al checkout</a>
+        </aside>
+      </div>
+    )}
+  </div>
+</Layout>
+
+<script>
+  import { updateQty, removeItem } from '~/lib/cart-client'
+
+  document.querySelectorAll<HTMLElement>('[data-cart-row]').forEach((row) => {
+    const itemId = Number(row.dataset.itemId)
+    const qtyInput = row.querySelector<HTMLInputElement>('[data-qty-input]')
+    const dec = row.querySelector<HTMLButtonElement>('[data-qty-dec]')
+    const inc = row.querySelector<HTMLButtonElement>('[data-qty-inc]')
+    const removeBtn = row.querySelector<HTMLButtonElement>('[data-remove]')
+
+    async function applyQty(qty: number) {
+      row.style.opacity = '0.5'
+      const result = await updateQty(itemId, qty)
+      if (result) window.location.reload()
+      else row.style.opacity = '1'
+    }
+
+    dec?.addEventListener('click', () => {
+      if (!qtyInput) return
+      const next = Math.max(1, Number(qtyInput.value) - 1)
+      qtyInput.value = String(next)
+      applyQty(next)
+    })
+    inc?.addEventListener('click', () => {
+      if (!qtyInput) return
+      const next = Number(qtyInput.value) + 1
+      qtyInput.value = String(next)
+      applyQty(next)
+    })
+    qtyInput?.addEventListener('change', () => {
+      const next = Math.max(1, Number(qtyInput.value) || 1)
+      applyQty(next)
+    })
+    removeBtn?.addEventListener('click', async () => {
+      row.style.opacity = '0.5'
+      const result = await removeItem(itemId)
+      if (result) window.location.reload()
+      else row.style.opacity = '1'
+    })
+  })
+</script>
