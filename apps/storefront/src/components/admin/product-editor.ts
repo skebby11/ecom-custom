@@ -1,4 +1,4 @@
-import { slugify } from '@ecom/shared/format'
+import { DEFAULT_VARIANT_TITLE, slugify } from '@ecom/shared/format'
 
 /**
  * Editor prodotto: gestisce slug automatico, righe immagini/opzioni riordinabili,
@@ -245,18 +245,18 @@ export function initProductEditor(): void {
 
     variantRows.innerHTML = ''
     for (const combo of combos) {
-      const key = combo.length > 0 ? combo.join(' / ') : 'Default'
-      const label = combo.length > 0 ? combo.join(' / ') : 'Default'
+      const key = combo.length > 0 ? combo.join(' / ') : DEFAULT_VARIANT_TITLE
+      const label = combo.length > 0 ? combo.join(' / ') : DEFAULT_VARIANT_TITLE
       variantRows.appendChild(buildVariantRow(key, label, existing.get(key)))
     }
   }
 
   regenerateBtn.addEventListener('click', () => regenerateVariants())
 
-  // Seed iniziale delle varianti dai dati del prodotto (o dal default "Default" per un prodotto nuovo).
+  // Seed iniziale delle varianti dai dati del prodotto (o dalla variante unica per un prodotto nuovo).
   for (const variant of initial.variants) {
-    const key = variant.optionValues.length > 0 ? variant.optionValues.join(' / ') : 'Default'
-    const label = variant.optionValues.length > 0 ? variant.optionValues.join(' / ') : variant.title || 'Default'
+    const key = variant.optionValues.length > 0 ? variant.optionValues.join(' / ') : DEFAULT_VARIANT_TITLE
+    const label = variant.optionValues.length > 0 ? variant.optionValues.join(' / ') : variant.title || DEFAULT_VARIANT_TITLE
     variantRows.appendChild(
       buildVariantRow(key, label, {
         id: variant.id,
@@ -323,8 +323,8 @@ export function initProductEditor(): void {
       const compareAtCents = compareAtRaw.trim() === '' ? null : euroToCents(compareAtRaw)
       if (priceCents === null) priceError = true
 
-      const key = row.dataset.key ?? 'Default'
-      const optionValues = key === 'Default' ? [] : key.split(' / ')
+      const key = row.dataset.key ?? DEFAULT_VARIANT_TITLE
+      const optionValues = key === DEFAULT_VARIANT_TITLE ? [] : key.split(' / ')
 
       return {
         ...(row.dataset.variantId ? { id: Number(row.dataset.variantId) } : {}),

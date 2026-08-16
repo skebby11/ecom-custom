@@ -1,6 +1,6 @@
 ---
 import type { Collection, ProductDetail, ProductStatus } from '@ecom/shared'
-import { productStatuses } from '@ecom/shared/format'
+import { DEFAULT_VARIANT_TITLE, productStatuses } from '@ecom/shared/format'
 import { centsToEuroInput } from './product-editor'
 
 export interface Props {
@@ -43,7 +43,7 @@ const initialData = {
       : [
           {
             sku: '',
-            title: 'Default',
+            title: DEFAULT_VARIANT_TITLE,
             priceEuro: '',
             compareAtEuro: '',
             stock: 0,
