@@ -110,7 +110,7 @@ Tutte le rotte `/api/admin/*` tranne `login` richiedono la sessione, altrimenti 
 | PUT | `/api/admin/products/:id` | `adminProductInputSchema` | `ProductDetail` |
 | DELETE | `/api/admin/products/:id` | — | `{ ok: true }` |
 | GET | `/api/admin/collections` | — | `Collection[]` |
-| POST | `/api/admin/collections` | `adminCollectionInputSchema` | `Collection` |
+| POST | `/api/admin/collections` | `{ slug, title, description?, imageUrl? }` | `Collection` |
 | PUT | `/api/admin/collections/:id` | idem | `Collection` |
 | DELETE | `/api/admin/collections/:id` | — | `{ ok: true }` |
 | GET | `/api/admin/orders` | `?status&page&limit` | `Paginated<Order>` |
@@ -120,8 +120,3 @@ Tutte le rotte `/api/admin/*` tranne `login` richiedono la sessione, altrimenti 
 `PUT /api/admin/products/:id` fa un replace completo di opzioni e varianti in una
 transazione: le varianti con `id` esistente vengono aggiornate, quelle senza `id`
 create, quelle assenti dal payload eliminate.
-
-`adminCollectionInputSchema` è `{ slug, title, description?, imageUrl? }`: `slug` in
-kebab-case, `title` max 200 caratteri, `description` max 5000, `imageUrl` un URL
-assoluto `http`/`https` (schemi diversi vengono rifiutati: il valore finisce in un
-`src` della vetrina pubblica). `description` e `imageUrl` accettano `null`.
