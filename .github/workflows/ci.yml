@@ -97,15 +97,25 @@ jobs:
       - name: Seed database
         # packages/db/src/seed.ts è fail-closed: NODE_ENV assente viene trattata
         # come produzione e il seed si rifiuta di girare, quindi va impostata
-        # esplicitamente a "development". ADMIN_EMAIL/ADMIN_PASSWORD sono
-        # obbligatorie (email valida, password >= 8 caratteri): credenziali usa
-        # e getta valide solo per questo run del database del runner.
-        run: npm run db:seed
+        # esplicitamente a "development". ADMIN_PASSWORD è generata qui a runtime
+        # (openssl rand) invece di essere un letterale nel file: uno scanner di
+        # secret (es. DeepSource SCT-A000) segnala qualunque password fissa nel
+        # sorgente, anche se il database è SQLite effimero locale al runner.
+        # ::add-mask:: impedisce che il valore compaia nei log del job; niente
+        # `set -x` in questo step, né echo del valore. Non usiamo secrets.* di
+        # GitHub: richiederebbe una configurazione manuale sul repo che la CI,
+        # così com'è, non deve presupporre.
+        run: |
+          ADMIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          export ADMIN_PASSWORD
+          npm run db:seed
         env:
           NODE_ENV: development
           DATABASE_URL: ./data/ecom-ci.db
+          # Non è una credenziale: è l'email di test del seed, fissa apposta
+          # per essere riconoscibile nei log del runner.
           ADMIN_EMAIL: admin@ci.q4studio.test
-          ADMIN_PASSWORD: CiSeedPassword123
 
   convenzioni:
     name: Convenzioni di progetto (CLAUDE.md)
