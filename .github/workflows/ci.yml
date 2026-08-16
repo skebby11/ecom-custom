@@ -38,9 +38,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # Legge "engines.node" (">=20") direttamente da package.json: la
-          # versione non va tenuta duplicata fra qui e l'engines del progetto.
-          node-version-file: package.json
+          # .nvmrc fissa una versione maggiore esatta (20), valida anche in
+          # locale. "engines.node" in package.json resta un range (">=20"):
+          # è compatibilità dichiarata del progetto, non va letto da qui,
+          # perché actions/setup-node risolverebbe un range alla versione
+          # più recente disponibile (è già successo: Node 24, dove il
+          # binding nativo di better-sqlite3 va in assert durante il seed).
+          node-version-file: .nvmrc
           cache: 'npm'
 
       - name: Installazione dipendenze (npm ci)
@@ -103,7 +107,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          # Stessa fonte deterministica del job "static": vedi commento lì.
+          node-version-file: .nvmrc
           cache: 'npm'
 
       # Job separato da "static" così dal nome del check rosso si capisce subito
@@ -163,7 +168,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          # Stessa fonte deterministica degli altri due job: vedi commento nel job "static".
+          node-version-file: .nvmrc
 
       - name: Verifica convenzioni CLAUDE.md
         # Grep/script di shell in Node (niente dipendenze da installare: solo
