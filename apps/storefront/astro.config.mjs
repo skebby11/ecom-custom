@@ -82,6 +82,13 @@ export default defineConfig({
   },
   vite: {
     plugins: [tailwindcss()],
+    // Il dev server di Vite rifiuta con 403 ogni richiesta il cui header `Host`
+    // non è dichiarato qui (difesa contro il DNS rebinding). L'host di
+    // `PUBLIC_SITE_URL` è per definizione quello da cui il sito viene navigato,
+    // quindi in sviluppo va ammesso: senza, raggiungere `npm run dev` attraverso
+    // un tunnel (Tailscale, ngrok, un reverse proxy) restituisce solo 403.
+    // In produzione il dev server non gira e la lista resta vuota.
+    ...(isProd ? {} : { server: { allowedHosts: [parsedSiteUrl.hostname] } }),
   },
   devToolbar: { enabled: false },
 })
