@@ -55,18 +55,39 @@ export function errorHandler(error: Error, request: FastifyRequest, reply: Fasti
   // Errori generati da Fastify prima di arrivare all'handler (JSON malformato, body
   // troppo grande, content-type non supportato): portano già uno statusCode 4xx
   // corretto, che altrimenti verrebbe appiattito a 500.
+  // Il filtro sul prefisso `FST_` è necessario: anche gli errori di librerie di
+  // terze parti (per esempio Stripe) espongono `statusCode`, e senza questo
+  // controllo il loro messaggio interno finirebbe dritto al cliente.
   const fastifyError = error as Error & { statusCode?: number; code?: string }
   if (
+    typeof fastifyError.code === 'string' &&
+    fastifyError.code.startsWith('FST_') &&
     typeof fastifyError.statusCode === 'number' &&
     fastifyError.statusCode >= 400 &&
     fastifyError.statusCode < 500
   ) {
     reply.status(fastifyError.statusCode).send({
-      error: {
-        code: fastifyError.code ?? 'VALIDATION_ERROR',
-        message: fastifyError.message,
-        details: null,
-      },
+      error: { code: fastifyError.code, message: fastifyError.message, details: null },
+    })
+    return
+  }
+
+  // Violazioni di unicità: slug o SKU già presenti. Senza questo diventerebbero
+  // un 500 generico e l'admin non saprebbe quale campo correggere.
+  const sqliteError = error as Error & { code?: string }
+  if (sqliteError.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+    const field = /:\s*\w+\.(\w+)/.exec(error.message)?.[1]
+    const label =
+      field === 'slug'
+        ? 'Esiste già un elemento con questo slug'
+        : field === 'sku'
+          ? 'Esiste già una variante con questo SKU'
+          : field === 'email'
+            ? 'Esiste già un utente con questa email'
+            : 'Valore già utilizzato'
+    request.log.warn({ err: error }, 'violazione di unicità')
+    reply.status(409).send({
+      error: { code: 'DUPLICATE', message: label, details: field ? { field } : null },
     })
     return
   }

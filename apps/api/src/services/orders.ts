@@ -90,40 +90,50 @@ export async function beginCheckout(input: CheckoutInput): Promise<{ url: string
   const accessToken = randomBytes(24).toString('hex')
 
   const db = getDb()
-  await db.transaction(async (tx) => {
+  // sincrona: better-sqlite3 non supporta callback async dentro db.transaction();
+  // la chiamata Stripe resta fuori, dopo il commit (vedi sotto)
+  db.transaction((tx) => {
     // numero progressivo per anno, calcolato dentro la stessa transazione dell'insert
     const year = new Date().getFullYear()
     const prefix = `ORD-${year}-`
-    const [countRow] = await tx.select({ count: sql<number>`count(*)` }).from(orders).where(like(orders.number, `${prefix}%`))
+    const [countRow] = tx
+      .select({ count: sql<number>`count(*)` })
+      .from(orders)
+      .where(like(orders.number, `${prefix}%`))
+      .all()
     const number = `${prefix}${String((countRow?.count ?? 0) + 1).padStart(4, '0')}`
 
-    await tx.insert(orders).values({
-      id: orderId,
-      number,
-      email: input.email,
-      status: 'pending',
-      subtotalCents,
-      shippingCents,
-      totalCents,
-      currency: CURRENCY,
-      accessToken,
-      shippingAddress: input.shippingAddress ?? null,
-      cartId: input.cartId,
-    })
+    tx.insert(orders)
+      .values({
+        id: orderId,
+        number,
+        email: input.email,
+        status: 'pending',
+        subtotalCents,
+        shippingCents,
+        totalCents,
+        currency: CURRENCY,
+        accessToken,
+        shippingAddress: input.shippingAddress ?? null,
+        cartId: input.cartId,
+      })
+      .run()
 
-    await tx.insert(orderItems).values(
-      items.map((item) => ({
-        orderId,
-        variantId: item.variantId,
-        productSlug: item.productSlug,
-        productTitle: item.productTitle,
-        variantTitle: item.variantTitle,
-        sku: item.sku,
-        imageUrl: item.imageUrl,
-        unitPriceCents: item.unitPriceCents,
-        qty: item.qty,
-      }))
-    )
+    tx.insert(orderItems)
+      .values(
+        items.map((item) => ({
+          orderId,
+          variantId: item.variantId,
+          productSlug: item.productSlug,
+          productTitle: item.productTitle,
+          variantTitle: item.variantTitle,
+          sku: item.sku,
+          imageUrl: item.imageUrl,
+          unitPriceCents: item.unitPriceCents,
+          qty: item.qty,
+        }))
+      )
+      .run()
   })
 
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = items.map((item) => ({
@@ -180,27 +190,28 @@ export async function getOrderForCustomer(orderId: string, token: string): Promi
 
 export async function markOrderPaid(orderId: string, paymentIntentId: string | null): Promise<void> {
   const db = getDb()
-  await db.transaction(async (tx) => {
-    const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)
+  // sincrona: better-sqlite3 non supporta callback async dentro db.transaction()
+  db.transaction((tx) => {
+    const [order] = tx.select().from(orders).where(eq(orders.id, orderId)).limit(1).all()
     if (!order || order.status === 'paid') return
 
-    const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId))
+    const items = tx.select().from(orderItems).where(eq(orderItems.orderId, orderId)).all()
     for (const item of items) {
       if (item.variantId != null) {
-        await tx
-          .update(variants)
+        tx.update(variants)
           .set({ stock: sql`max(${variants.stock} - ${item.qty}, 0)` })
           .where(eq(variants.id, item.variantId))
+          .run()
       }
     }
 
-    await tx
-      .update(orders)
+    tx.update(orders)
       .set({ status: 'paid', stripePaymentIntentId: paymentIntentId, updatedAt: new Date().toISOString() })
       .where(eq(orders.id, orderId))
+      .run()
 
     if (order.cartId) {
-      await tx.delete(cartItems).where(eq(cartItems.cartId, order.cartId))
+      tx.delete(cartItems).where(eq(cartItems.cartId, order.cartId)).run()
     }
   })
 }

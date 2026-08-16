@@ -340,8 +340,9 @@ export async function adminListProducts(params: {
 export async function adminCreateProduct(input: AdminProductInput): Promise<ProductDetail> {
   const db = getDb()
 
-  const productId = await db.transaction(async (tx) => {
-    const [product] = await tx
+  // sincrona: better-sqlite3 non supporta callback async dentro db.transaction()
+  const productId = db.transaction((tx) => {
+    const [product] = tx
       .insert(products)
       .values({
         slug: input.slug,
@@ -351,40 +352,47 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
         status: input.status,
       })
       .returning()
+      .all()
 
     if (input.images.length) {
-      await tx.insert(productImages).values(
-        input.images.map((img, position) => ({
-          productId: product!.id,
-          url: img.url,
-          alt: img.alt ?? null,
-          position,
-        }))
-      )
+      tx.insert(productImages)
+        .values(
+          input.images.map((img, position) => ({
+            productId: product!.id,
+            url: img.url,
+            alt: img.alt ?? null,
+            position,
+          }))
+        )
+        .run()
     }
 
     // opzioni + valori: options[i] corrisponde posizionalmente a optionValues[i] di ogni variante
     const optionValueIdsByAxis: number[][] = []
+    const optionIdsByAxis: number[] = []
     for (let i = 0; i < input.options.length; i++) {
       const opt = input.options[i]!
-      const [optionRow] = await tx
+      const [optionRow] = tx
         .insert(productOptions)
         .values({ productId: product!.id, name: opt.name, position: i })
         .returning()
+        .all()
       const valueIds: number[] = []
       for (let j = 0; j < opt.values.length; j++) {
-        const [valueRow] = await tx
+        const [valueRow] = tx
           .insert(optionValues)
           .values({ optionId: optionRow!.id, value: opt.values[j]!, position: j })
           .returning()
+          .all()
         valueIds.push(valueRow!.id)
       }
       optionValueIdsByAxis.push(valueIds)
+      optionIdsByAxis.push(optionRow!.id)
     }
 
     for (let vIdx = 0; vIdx < input.variants.length; vIdx++) {
       const variantInput = input.variants[vIdx]!
-      const [variantRow] = await tx
+      const [variantRow] = tx
         .insert(variants)
         .values({
           productId: product!.id,
@@ -396,6 +404,7 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
           position: vIdx,
         })
         .returning()
+        .all()
 
       const links = variantInput.optionValues
         .map((value, axisIndex) => {
@@ -403,17 +412,27 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
           if (!axis) return null
           const idx = axis.values.indexOf(value)
           const valueId = idx >= 0 ? optionValueIdsByAxis[axisIndex]?.[idx] : undefined
-          return valueId !== undefined ? { variantId: variantRow!.id, optionValueId: valueId } : null
+          const optionId = optionIdsByAxis[axisIndex]
+          // `optionId` è ridondante rispetto al valore, ma è ciò su cui il database
+          // impone una sola riga per asse: senza, due valori dello stesso asse
+          // finirebbero sulla stessa variante
+          return valueId !== undefined && optionId !== undefined
+            ? { variantId: variantRow!.id, optionValueId: valueId, optionId }
+            : null
         })
-        .filter((l): l is { variantId: number; optionValueId: number } => l !== null)
+        .filter(
+          (l): l is { variantId: number; optionValueId: number; optionId: number } => l !== null
+        )
 
-      if (links.length) await tx.insert(variantOptionValues).values(links)
+      if (links.length) tx.insert(variantOptionValues).values(links).run()
     }
 
     if (input.collectionSlugs.length) {
-      const collectionRows = await tx.select().from(collections).where(inArray(collections.slug, input.collectionSlugs))
+      const collectionRows = tx.select().from(collections).where(inArray(collections.slug, input.collectionSlugs)).all()
       if (collectionRows.length) {
-        await tx.insert(productCollections).values(collectionRows.map((c) => ({ productId: product!.id, collectionId: c.id })))
+        tx.insert(productCollections)
+          .values(collectionRows.map((c) => ({ productId: product!.id, collectionId: c.id })))
+          .run()
       }
     }
 
@@ -428,12 +447,12 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
 export async function adminReplaceProduct(id: number, input: AdminProductInput): Promise<ProductDetail> {
   const db = getDb()
 
-  await db.transaction(async (tx) => {
-    const [existing] = await tx.select().from(products).where(eq(products.id, id)).limit(1)
+  // sincrona: better-sqlite3 non supporta callback async dentro db.transaction()
+  db.transaction((tx) => {
+    const [existing] = tx.select().from(products).where(eq(products.id, id)).limit(1).all()
     if (!existing) throw notFound('Prodotto non trovato')
 
-    await tx
-      .update(products)
+    tx.update(products)
       .set({
         slug: input.slug,
         title: input.title,
@@ -443,43 +462,48 @@ export async function adminReplaceProduct(id: number, input: AdminProductInput):
         updatedAt: new Date().toISOString(),
       })
       .where(eq(products.id, id))
+      .run()
 
     // immagini: replace completo
-    await tx.delete(productImages).where(eq(productImages.productId, id))
+    tx.delete(productImages).where(eq(productImages.productId, id)).run()
     if (input.images.length) {
-      await tx.insert(productImages).values(
-        input.images.map((img, position) => ({ productId: id, url: img.url, alt: img.alt ?? null, position }))
-      )
+      tx.insert(productImages)
+        .values(input.images.map((img, position) => ({ productId: id, url: img.url, alt: img.alt ?? null, position })))
+        .run()
     }
 
     // varianti assenti dal payload: rimosse. Prima si liberano le righe carrello che le referenziano.
-    const existingVariants = await tx.select().from(variants).where(eq(variants.productId, id))
+    const existingVariants = tx.select().from(variants).where(eq(variants.productId, id)).all()
     const keepIds = new Set(input.variants.map((v) => v.id).filter((v): v is number => v !== undefined))
     const toDelete = existingVariants.filter((v) => !keepIds.has(v.id)).map((v) => v.id)
     if (toDelete.length) {
-      await tx.delete(cartItems).where(inArray(cartItems.variantId, toDelete))
-      await tx.delete(variants).where(inArray(variants.id, toDelete))
+      tx.delete(cartItems).where(inArray(cartItems.variantId, toDelete)).run()
+      tx.delete(variants).where(inArray(variants.id, toDelete)).run()
     }
 
     // opzioni: replace completo (la cascata su option_values / variant_option_values è del DB,
     // qui ricostruiamo comunque i link espliciti per ogni variante subito dopo)
-    await tx.delete(productOptions).where(eq(productOptions.productId, id))
+    tx.delete(productOptions).where(eq(productOptions.productId, id)).run()
     const optionValueIdsByAxis: number[][] = []
+    const optionIdsByAxis: number[] = []
     for (let i = 0; i < input.options.length; i++) {
       const opt = input.options[i]!
-      const [optionRow] = await tx
+      const [optionRow] = tx
         .insert(productOptions)
         .values({ productId: id, name: opt.name, position: i })
         .returning()
+        .all()
       const valueIds: number[] = []
       for (let j = 0; j < opt.values.length; j++) {
-        const [valueRow] = await tx
+        const [valueRow] = tx
           .insert(optionValues)
           .values({ optionId: optionRow!.id, value: opt.values[j]!, position: j })
           .returning()
+          .all()
         valueIds.push(valueRow!.id)
       }
       optionValueIdsByAxis.push(valueIds)
+      optionIdsByAxis.push(optionRow!.id)
     }
 
     const resolveLinks = (variantId: number, selections: string[]) =>
@@ -489,17 +513,21 @@ export async function adminReplaceProduct(id: number, input: AdminProductInput):
           if (!axis) return null
           const idx = axis.values.indexOf(value)
           const valueId = idx >= 0 ? optionValueIdsByAxis[axisIndex]?.[idx] : undefined
-          return valueId !== undefined ? { variantId, optionValueId: valueId } : null
+          const optionId = optionIdsByAxis[axisIndex]
+          return valueId !== undefined && optionId !== undefined
+            ? { variantId, optionValueId: valueId, optionId }
+            : null
         })
-        .filter((l): l is { variantId: number; optionValueId: number } => l !== null)
+        .filter(
+          (l): l is { variantId: number; optionValueId: number; optionId: number } => l !== null
+        )
 
     for (let vIdx = 0; vIdx < input.variants.length; vIdx++) {
       const variantInput = input.variants[vIdx]!
       let variantId: number
       if (variantInput.id !== undefined && keepIds.has(variantInput.id)) {
         variantId = variantInput.id
-        await tx
-          .update(variants)
+        tx.update(variants)
           .set({
             sku: variantInput.sku,
             title: variantInput.title,
@@ -509,8 +537,9 @@ export async function adminReplaceProduct(id: number, input: AdminProductInput):
             position: vIdx,
           })
           .where(eq(variants.id, variantId))
+          .run()
       } else {
-        const [row] = await tx
+        const [row] = tx
           .insert(variants)
           .values({
             productId: id,
@@ -522,19 +551,22 @@ export async function adminReplaceProduct(id: number, input: AdminProductInput):
             position: vIdx,
           })
           .returning()
+          .all()
         variantId = row!.id
       }
 
       const links = resolveLinks(variantId, variantInput.optionValues)
-      if (links.length) await tx.insert(variantOptionValues).values(links)
+      if (links.length) tx.insert(variantOptionValues).values(links).run()
     }
 
     // collezioni: replace completo
-    await tx.delete(productCollections).where(eq(productCollections.productId, id))
+    tx.delete(productCollections).where(eq(productCollections.productId, id)).run()
     if (input.collectionSlugs.length) {
-      const collectionRows = await tx.select().from(collections).where(inArray(collections.slug, input.collectionSlugs))
+      const collectionRows = tx.select().from(collections).where(inArray(collections.slug, input.collectionSlugs)).all()
       if (collectionRows.length) {
-        await tx.insert(productCollections).values(collectionRows.map((c) => ({ productId: id, collectionId: c.id })))
+        tx.insert(productCollections)
+          .values(collectionRows.map((c) => ({ productId: id, collectionId: c.id })))
+          .run()
       }
     }
   })
