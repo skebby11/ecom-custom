@@ -474,7 +474,15 @@ export async function adminReplaceProduct(id: number, input: AdminProductInput):
 
     // varianti assenti dal payload: rimosse. Prima si liberano le righe carrello che le referenziano.
     const existingVariants = tx.select().from(variants).where(eq(variants.productId, id)).all()
-    const keepIds = new Set(input.variants.map((v) => v.id).filter((v): v is number => v !== undefined))
+    // un id nel payload conta come "da mantenere" solo se appartiene davvero a una
+    // variante di QUESTO prodotto: altrimenti un admin potrebbe modificare/agganciare
+    // la variante di un altro prodotto passandone l'id nel payload
+    const existingVariantIds = new Set(existingVariants.map((v) => v.id))
+    const keepIds = new Set(
+      input.variants
+        .map((v) => v.id)
+        .filter((v): v is number => v !== undefined && existingVariantIds.has(v))
+    )
     const toDelete = existingVariants.filter((v) => !keepIds.has(v.id)).map((v) => v.id)
     if (toDelete.length) {
       tx.delete(cartItems).where(inArray(cartItems.variantId, toDelete)).run()

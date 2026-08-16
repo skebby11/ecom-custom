@@ -193,7 +193,9 @@ export async function markOrderPaid(orderId: string, paymentIntentId: string | n
   // sincrona: better-sqlite3 non supporta callback async dentro db.transaction()
   db.transaction((tx) => {
     const [order] = tx.select().from(orders).where(eq(orders.id, orderId)).limit(1).all()
-    if (!order || order.status === 'paid') return
+    // 'fulfilled' è terminale quanto 'paid': un evento Stripe duplicato non deve
+    // ri-scalare lo stock né retrocedere lo stato di un ordine già evaso
+    if (!order || order.status === 'paid' || order.status === 'fulfilled') return
 
     const items = tx.select().from(orderItems).where(eq(orderItems.orderId, orderId)).all()
     for (const item of items) {
@@ -219,7 +221,9 @@ export async function markOrderPaid(orderId: string, paymentIntentId: string | n
 export async function markOrderFailed(orderId: string): Promise<void> {
   const db = getDb()
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
-  if (!order || order.status === 'paid') return
+  // stessa ragione di markOrderPaid: un evento expired/failed tardivo non deve
+  // retrocedere un ordine già pagato o già evaso
+  if (!order || order.status === 'paid' || order.status === 'fulfilled') return
   await db.update(orders).set({ status: 'failed', updatedAt: new Date().toISOString() }).where(eq(orders.id, orderId))
 }
 
