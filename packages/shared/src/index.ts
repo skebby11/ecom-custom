@@ -203,6 +203,19 @@ export const orderSchema = z.object({
 export type Order = z.infer<typeof orderSchema>
 export type OrderItem = z.infer<typeof orderItemSchema>
 
+/**
+ * L'ordine come lo vede l'admin: in più i riferimenti Stripe, che servono a
+ * ritrovare pagamento e sessione nella dashboard quando un ordine va chiarito.
+ * Restano fuori da `orderSchema` perché quello alimenta anche
+ * `GET /api/orders/:id?token=…`, che il cliente raggiunge con un token: gli id
+ * Stripe non gli servono e non c'è motivo di consegnarglieli.
+ */
+export const adminOrderSchema = orderSchema.extend({
+  stripeSessionId: z.string().nullable(),
+  stripePaymentIntentId: z.string().nullable(),
+})
+export type AdminOrder = z.infer<typeof adminOrderSchema>
+
 /* ------------------------------------------------------------------ */
 /* Admin                                                               */
 /* ------------------------------------------------------------------ */
