@@ -99,7 +99,21 @@ export const variants = sqliteTable(
   })
 )
 
-/** Join variante ↔ valori opzione (una riga per asse). */
+/**
+ * Join variante ↔ valori opzione: esattamente una riga per asse.
+ *
+ * `optionId` è denormalizzato apposta. Senza, la chiave primaria rifiuta solo
+ * la coppia duplicata `(variante, valore)` e nulla impedisce di collegare alla
+ * stessa variante due valori dello stesso asse — "M" e "L" insieme — cioè una
+ * variante che non può esistere. Con l'unicità su `(variante, asse)` il
+ * database rifiuta la combinazione impossibile.
+ *
+ * Che il valore appartenga al prodotto giusto resta un invariante del livello
+ * applicativo: in SQLite servirebbe propagare `product_id` fino a qui e su
+ * `option_values` per esprimerlo come chiave esterna composita. L'unico punto
+ * di scrittura sono `adminCreateProduct`/`adminUpdateProduct` e il seed, che
+ * costruiscono i collegamenti a partire dalle opzioni del prodotto stesso.
+ */
 export const variantOptionValues = sqliteTable(
   'variant_option_values',
   {
@@ -109,9 +123,16 @@ export const variantOptionValues = sqliteTable(
     optionValueId: integer('option_value_id')
       .notNull()
       .references(() => optionValues.id, { onDelete: 'cascade' }),
+    optionId: integer('option_id')
+      .notNull()
+      .references(() => productOptions.id, { onDelete: 'cascade' }),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.variantId, t.optionValueId] }),
+    oneValuePerAxis: uniqueIndex('variant_option_values_variant_option_idx').on(
+      t.variantId,
+      t.optionId
+    ),
     valueIdx: index('variant_option_values_value_idx').on(t.optionValueId),
   })
 )

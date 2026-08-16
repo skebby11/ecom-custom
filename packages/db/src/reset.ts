@@ -9,13 +9,17 @@ import { resolveDbPath } from './index.js'
  */
 const path = resolveDbPath()
 const forced = process.argv.includes('--force')
-const nodeEnv = process.env.NODE_ENV ?? 'development'
+// fail-closed: `NODE_ENV` non impostata è la norma su una macchina di produzione,
+// quindi trattarla come sviluppo renderebbe la guardia inutile proprio dove serve.
+// Serve un `NODE_ENV=development` esplicito, oppure `--force`.
+const nodeEnv = process.env.NODE_ENV ?? 'production'
 
 if (nodeEnv !== 'development' && !forced) {
   console.error(
     `✗ Rifiuto di cancellare il database con NODE_ENV="${nodeEnv}".\n` +
-      `  Percorso: ${path}\n` +
-      '  Se è davvero quello che vuoi, rilancia con --force.'
+      `  Percorso: ${path}\n\n` +
+      '  In sviluppo:  NODE_ENV=development npm run db:reset\n' +
+      '  Per forzare:  npm run db:reset -- --force'
   )
   process.exit(1)
 }

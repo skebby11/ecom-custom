@@ -4,15 +4,23 @@
  * Idempotente:
  * - le tabelle di catalogo (collezioni, prodotti e tutto ciò che dipende da essi
  *   tramite `ON DELETE CASCADE`) vengono svuotate e ricreate dentro un'unica transazione;
- * - gli ordini (`orders`, `order_items`, `carts`, `webhook_events`) NON vengono toccati;
+ * - gli ordini (`orders`, `order_items`, `webhook_events`) NON vengono toccati: le
+ *   righe ordine sono snapshot e `order_items.variant_id` non ha chiave esterna;
  * - l'utente admin viene creato oppure, se l'email esiste già, solo l'hash password
  *   viene aggiornato (nessun duplicato).
+ *
+ * ATTENZIONE — è distruttivo per i carrelli attivi: cancellare i prodotti fa
+ * cascata su `variants` e da lì su `cart_items`, quindi i carrelli dei clienti
+ * restano ma si svuotano. Per questo lo script è uno strumento di sviluppo e si
+ * rifiuta di girare fuori da `NODE_ENV=development` senza `--force`.
  */
 import { DEFAULT_VARIANT_TITLE } from '@ecom/shared/format'
+import { sql } from 'drizzle-orm'
 import { createDb } from './index.js'
 import { hashPassword } from './password.js'
 import {
   adminUsers,
+  cartItems,
   collections,
   optionValues,
   productCollections,
@@ -69,9 +77,36 @@ function readAdminCredentials(): { email: string; password: string } {
   return { email, password }
 }
 
+/**
+ * Il seed ricrea il catalogo da zero e questo svuota i carrelli attivi.
+ * Fail-closed come `db:reset`: `NODE_ENV` non impostata è la norma in produzione,
+ * quindi trattarla come sviluppo renderebbe la guardia inutile dove serve.
+ */
+function assertSafeToSeed(): void {
+  const forced = process.argv.includes('--force')
+  const nodeEnv = process.env.NODE_ENV ?? 'production'
+  if (nodeEnv === 'development' || forced) return
+
+  console.error(
+    `✗ Rifiuto di rigenerare il catalogo con NODE_ENV="${nodeEnv}".\n` +
+      '  Il seed cancella e ricrea tutti i prodotti: i carrelli attivi si svuotano.\n\n' +
+      '  In sviluppo:  NODE_ENV=development npm run db:seed\n' +
+      '  Per forzare:  npm run db:seed -- --force'
+  )
+  process.exit(1)
+}
+
+/** Righe carrello che la rigenerazione del catalogo porterà via. */
+function countCartLinesAtRisk(): number {
+  const [row] = db.select({ n: sql<number>`count(*)` }).from(cartItems).all()
+  return row?.n ?? 0
+}
+
 // validate-first: fallire dopo aver già ricreato l'intero catalogo sarebbe
 // solo lavoro sprecato, anche se la transazione poi lo annulla
+assertSafeToSeed()
 const admin = readAdminCredentials()
+const cartLinesAtRisk = countCartLinesAtRisk()
 
 function runSeed(): SeedSummary {
   return db.transaction((tx) => {
@@ -128,6 +163,7 @@ function runSeed(): SeedSummary {
       }
 
       // opzioni + valori, mappando nome opzione -> valore -> id
+      const optionIdByName = new Map<string, number>()
       const valueIdByOptionAndValue = new Map<string, Map<string, number>>()
       p.options.forEach((opt: ProductOptionSeed, optIdx: number) => {
         const optionResult = tx
@@ -135,6 +171,7 @@ function runSeed(): SeedSummary {
           .values({ productId, name: opt.name, position: optIdx })
           .run()
         const optionId = Number(optionResult.lastInsertRowid)
+        optionIdByName.set(opt.name, optionId)
 
         const valueIdByValue = new Map<string, number>()
         opt.values.forEach((value, valueIdx) => {
@@ -168,8 +205,9 @@ function runSeed(): SeedSummary {
           const option = p.options[axisIdx]
           if (!option) return
           const valueId = valueIdByOptionAndValue.get(option.name)?.get(value)
-          if (valueId === undefined) return
-          tx.insert(variantOptionValues).values({ variantId, optionValueId: valueId }).run()
+          const optionId = optionIdByName.get(option.name)
+          if (valueId === undefined || optionId === undefined) return
+          tx.insert(variantOptionValues).values({ variantId, optionValueId: valueId, optionId }).run()
         })
       })
 
@@ -201,6 +239,9 @@ function runSeed(): SeedSummary {
 const summary = runSeed()
 
 console.log('')
+if (cartLinesAtRisk > 0) {
+  console.warn(`⚠ ${cartLinesAtRisk} righe di carrello sono state rimosse con il vecchio catalogo.`)
+}
 console.log('✓ Seed completato')
 console.log(`  Collezioni : ${summary.collections}`)
 console.log(

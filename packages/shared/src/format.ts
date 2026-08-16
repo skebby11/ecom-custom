@@ -23,10 +23,18 @@ export function euroToCents(input: string): number | null {
   const raw = input.trim().replace(/\s|€/g, '')
   if (!raw) return null
 
+  // "1.299" e "1.234.567" sono gruppi di migliaia, non decimali: senza questo
+  // controllo l'ultimo separatore verrebbe letto come decimale e le tre cifre
+  // finali farebbero fallire il limite di due decimali.
+  // Solo il punto vale come separatore di migliaia: in italiano la virgola è
+  // sempre decimale, quindi "12,345" resta un importo con tre decimali e va
+  // rifiutato, non reinterpretato come dodicimilatrecentoquarantacinque euro.
+  const groupingOnly = /^-?\d{1,3}(?:\.\d{3})+$/.test(raw)
+
   // separatore decimale = l'ultimo fra virgola e punto; gli altri sono migliaia
   const lastComma = raw.lastIndexOf(',')
   const lastDot = raw.lastIndexOf('.')
-  const decimalSep = lastComma > lastDot ? ',' : lastDot > lastComma ? '.' : ''
+  const decimalSep = groupingOnly ? '' : lastComma > lastDot ? ',' : lastDot > lastComma ? '.' : ''
 
   let intPart = raw
   let decPart = ''
@@ -37,6 +45,9 @@ export function euroToCents(input: string): number | null {
   }
 
   intPart = intPart.replace(/[.,]/g, '')
+  // il solo segno meno passerebbe la regex e diventerebbe -0, che supera un
+  // controllo "prezzo >= 0" e finirebbe salvato come prezzo zero
+  if (intPart === '-') return null
   if (!/^-?\d*$/.test(intPart) || !/^\d*$/.test(decPart)) return null
   if (intPart === '' && decPart === '') return null
 

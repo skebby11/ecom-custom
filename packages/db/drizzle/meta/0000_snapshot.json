@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "725ee571-265b-435f-92af-433c6d95db28",
+  "id": "e90fc5c7-5d90-44b0-8508-efe26ddbe95b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "admin_sessions": {
@@ -911,9 +911,24 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "option_id": {
+          "name": "option_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         }
       },
       "indexes": {
+        "variant_option_values_variant_option_idx": {
+          "name": "variant_option_values_variant_option_idx",
+          "columns": [
+            "variant_id",
+            "option_id"
+          ],
+          "isUnique": true
+        },
         "variant_option_values_value_idx": {
           "name": "variant_option_values_value_idx",
           "columns": [
@@ -942,6 +957,19 @@
           "tableTo": "option_values",
           "columnsFrom": [
             "option_value_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "variant_option_values_option_id_product_options_id_fk": {
+          "name": "variant_option_values_option_id_product_options_id_fk",
+          "tableFrom": "variant_option_values",
+          "tableTo": "product_options",
+          "columnsFrom": [
+            "option_id"
           ],
           "columnsTo": [
             "id"
