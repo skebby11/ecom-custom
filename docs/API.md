@@ -81,8 +81,8 @@ più restare esposto:
   limitato al percorso `/ordine` e reindirizza allo stesso indirizzo senza query string;
 - la pagina risponde con `Referrer-Policy: no-referrer`, così il token non finisce
   nell'header `Referer` verso terze parti;
-- l'API redige il parametro `token` (e i cookie) dai log delle richieste: negli accessi
-  compare `?token=[redatto]`;
+- l'API redige il parametro `token` (e i cookie) dai log delle richieste: negli accessi il
+  suo valore è sostituito dal segnaposto `[redatto]`;
 - il token non è monouso, perché la pagina di conferma continua a interrogare lo stato
   finché il webhook non arriva. La sua durata coincide con quella dell'ordine.
 
