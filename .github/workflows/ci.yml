@@ -1,0 +1,65 @@
+name: CI
+
+# Gira su ogni pull request verso main e su ogni push su main: verifica che il
+# monorepo compili (typecheck + build) e che schema/seed del database reggano.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Annulla i run precedenti ancora in corso sulla stessa PR (o sullo stesso ref
+# per i push), così non si accumulano job obsoleti in coda.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Typecheck, build e verifica database
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout codice
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          # Il progetto dichiara "engines.node": ">=20" in package.json.
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Installazione dipendenze (npm ci)
+        run: npm ci
+
+      - name: Controllo tipi (typecheck)
+        run: npm run typecheck
+
+      - name: Build (API + storefront)
+        # astro build imposta NODE_ENV=production da solo: apps/storefront/astro.config.mjs
+        # rifiuta il build in produzione se PUBLIC_SITE_URL manca, non è un URL valido o
+        # punta a localhost/127.0.0.1. Serve quindi un'origine pubblica plausibile, non
+        # il default di sviluppo dell'.env.example.
+        run: npm run build
+        env:
+          PUBLIC_SITE_URL: https://esempio.test
+
+      - name: Migrazione database
+        # I comandi db:* girano fuori dal processo API: usano solo le variabili
+        # d'ambiente impostate qui (non c'è alcun file .env nel runner).
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ./data/ecom-ci.db
+
+      - name: Seed database
+        # packages/db/src/seed.ts è fail-closed: NODE_ENV assente viene trattata
+        # come produzione e il seed si rifiuta di girare, quindi va impostata
+        # esplicitamente a "development". ADMIN_EMAIL/ADMIN_PASSWORD sono
+        # obbligatorie (email valida, password >= 8 caratteri): credenziali usa
+        # e getta valide solo per questo run del database del runner.
+        run: npm run db:seed
+        env:
+          NODE_ENV: development
+          DATABASE_URL: ./data/ecom-ci.db
+          ADMIN_EMAIL: admin@ci.q4studio.test
+          ADMIN_PASSWORD: CiSeedPassword123
