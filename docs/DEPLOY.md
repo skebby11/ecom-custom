@@ -33,6 +33,11 @@ PUBLIC_API_URL=https://tuodominio.it/api
   `cancel_url` dopo il checkout, e da esso deriva anche `security.allowedDomains` di Astro.
   Con `NODE_ENV` diverso da `development` l'API si rifiuta di partire se punta ancora a
   `localhost`: meglio un errore all'avvio che un deploy che fallisce al primo pagamento.
+  È **obbligatoria** anche in fase di build dello storefront: `astro.config.mjs`
+  interrompe il build dell'immagine se manca o non è un URL valido. Come `PUBLIC_API_URL`
+  (vedi sotto), `docker compose build` la inietta come build arg (vedi
+  `docker-compose.yml`): se la cambi dopo un primo deploy, `docker compose up -d` da solo
+  non basta, serve un rebuild (`docker compose build storefront && docker compose up -d storefront`).
 - `PUBLIC_API_URL` è una variabile Astro/Vite: `docker compose build` la inietta come
   build arg nell'immagine storefront (vedi `docker-compose.yml`) perché il bundle
   browser la inglobba in fase di build, non a runtime. Se la cambi dopo un primo

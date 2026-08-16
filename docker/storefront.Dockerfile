@@ -24,6 +24,12 @@ WORKDIR /app
 # docker-compose.yml e docs/DEPLOY.md): va passata come build arg.
 ARG PUBLIC_API_URL
 ENV PUBLIC_API_URL=$PUBLIC_API_URL
+# PUBLIC_SITE_URL: `astro build` forza NODE_ENV=production (indipendentemente
+# da quello impostato in questo stage), e astro.config.mjs in quel caso solleva
+# un errore se la variabile manca o non è un URL valido: va passata come build
+# arg con lo stesso schema di PUBLIC_API_URL (vedi docker-compose.yml e docs/DEPLOY.md).
+ARG PUBLIC_SITE_URL
+ENV PUBLIC_SITE_URL=$PUBLIC_SITE_URL
 COPY . .
 RUN npm run build -w @ecom/storefront
 
