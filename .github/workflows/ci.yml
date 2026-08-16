@@ -106,3 +106,32 @@ jobs:
           DATABASE_URL: ./data/ecom-ci.db
           ADMIN_EMAIL: admin@ci.q4studio.test
           ADMIN_PASSWORD: CiSeedPassword123
+
+  convenzioni:
+    name: Convenzioni di progetto (CLAUDE.md)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout codice
+        uses: actions/checkout@v4
+        with:
+          # Serve la storia completa per calcolare il diff fra base e head
+          # della PR (vedi scripts/ci/check-conventions.mjs). Repo piccolo:
+          # il costo di un fetch-depth 0 è trascurabile.
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Verifica convenzioni CLAUDE.md
+        # Grep/script di shell in Node (niente dipendenze da installare: solo
+        # moduli core), non serve npm ci per questo job. Controlla: niente
+        # float per il denaro, niente contratti Zod duplicati fuori da
+        # packages/shared, docs/API.md aggiornata quando cambia una rotta
+        # (quest'ultimo solo sugli eventi pull_request, gestito nello script).
+        run: node scripts/ci/check-conventions.mjs
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
