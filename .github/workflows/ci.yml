@@ -1,7 +1,8 @@
 name: CI
 
 # Gira su ogni pull request verso main e su ogni push su main: verifica che il
-# monorepo compili (typecheck + build) e che schema/seed del database reggano.
+# monorepo compili (typecheck + build), che schema/seed del database reggano
+# e che il codice rispetti le convenzioni non negoziabili di CLAUDE.md.
 on:
   pull_request:
     branches: [main]
