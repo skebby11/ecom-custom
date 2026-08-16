@@ -1,0 +1,35 @@
+---
+export interface Props {
+  page: number
+  pages: number
+  /** Costruisce l'href per una data pagina, preservando gli altri filtri in querystring. */
+  buildHref: (page: number) => string
+}
+
+const { page, pages, buildHref } = Astro.props
+---
+
+{
+  pages > 1 && (
+    <nav class="mt-4 flex items-center justify-center gap-3 text-sm" aria-label="Paginazione">
+      <a
+        href={buildHref(Math.max(1, page - 1))}
+        class:list={['btn-secondary !px-3 !py-1.5', page <= 1 && 'pointer-events-none opacity-40']}
+        aria-disabled={page <= 1}
+      >
+        ← Precedente
+      </a>
+      <span class="text-muted">Pagina {page} di {pages}</span>
+      <a
+        href={buildHref(Math.min(pages, page + 1))}
+        class:list={[
+          'btn-secondary !px-3 !py-1.5',
+          page >= pages && 'pointer-events-none opacity-40',
+        ]}
+        aria-disabled={page >= pages}
+      >
+        Successiva →
+      </a>
+    </nav>
+  )
+}

@@ -1,0 +1,124 @@
+---
+import '~/styles/global.css'
+import type { AdminUser } from '~/lib/admin-api'
+
+export interface Props {
+  /** Titolo pagina, mostrato nella topbar e nel <title>. */
+  title: string
+  user: AdminUser
+}
+
+const { title, user } = Astro.props
+const path = Astro.url.pathname
+
+const navItems = [
+  { href: '/admin', label: 'Dashboard', icon: '◧' },
+  { href: '/admin/prodotti', label: 'Prodotti', icon: '▤' },
+  { href: '/admin/ordini', label: 'Ordini', icon: '▧' },
+  { href: '/admin/collezioni', label: 'Collezioni', icon: '▥' },
+] as const
+
+const isActive = (href: string) => (href === '/admin' ? path === '/admin' : path.startsWith(href))
+---
+
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title} · Admin Q4 Studio</title>
+  </head>
+  <body class="min-h-screen bg-surface-alt text-sm text-ink">
+    <div class="flex min-h-screen flex-col lg:flex-row">
+      {
+        /*
+          I <label> di apertura/chiusura sono annidati dentro <aside> e <header>,
+          non fratelli diretti di questo checkbox: il combinatore `peer-*` di
+          Tailwind (selettore CSS "fratello generale") non li raggiungerebbe, quindi
+          l'indicatore di focus va sul checkbox stesso, reso temporaneamente visibile
+          (stesso pattern degli skip-link) invece che sulle label.
+        */
+      }
+      <input
+        type="checkbox"
+        id="admin-nav-toggle"
+        class="peer sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-50 focus-visible:h-6 focus-visible:w-6 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+        aria-label="Mostra o nascondi il menu di navigazione"
+      />
+
+      <aside
+        class="hidden flex-col border-b border-line bg-white peer-checked:flex lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r"
+      >
+        <div class="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+          <a href="/admin" class="text-sm font-semibold tracking-tight text-ink">
+            Q4 Studio <span class="font-normal text-muted">· Admin</span>
+          </a>
+          <label
+            for="admin-nav-toggle"
+            class="btn-ghost cursor-pointer !px-2 !py-1 lg:hidden"
+            aria-label="Chiudi menu"
+          >
+            ✕
+          </label>
+        </div>
+        <nav class="flex flex-1 flex-col gap-0.5 px-2 py-3" aria-label="Navigazione admin">
+          {
+            navItems.map((item) => (
+              <a
+                href={item.href}
+                aria-current={isActive(item.href) ? 'page' : undefined}
+                class:list={[
+                  'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                  isActive(item.href)
+                    ? 'bg-brand-50 text-brand-700'
+                    : 'text-muted hover:bg-surface-alt hover:text-ink',
+                ]}
+              >
+                <span aria-hidden="true">{item.icon}</span>
+                {item.label}
+              </a>
+            ))
+          }
+        </nav>
+        <div class="border-t border-line px-2 py-3">
+          <a
+            href="/"
+            class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-surface-alt hover:text-ink"
+          >
+            <span aria-hidden="true">←</span> Vai al sito
+          </a>
+          <form method="post" action="/admin/logout">
+            <button
+              type="submit"
+              class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-muted hover:bg-surface-alt hover:text-ink"
+            >
+              <span aria-hidden="true">⎋</span> Esci
+            </button>
+          </form>
+        </div>
+      </aside>
+
+      <div class="flex min-w-0 flex-1 flex-col">
+        <header
+          class="flex items-center justify-between gap-3 border-b border-line bg-white px-4 py-3 lg:px-6"
+        >
+          <div class="flex items-center gap-3">
+            <label
+              for="admin-nav-toggle"
+              class="btn-ghost cursor-pointer !px-2 !py-1.5 lg:hidden"
+              aria-label="Apri menu"
+            >
+              ☰
+            </label>
+            <h1 class="text-base font-semibold text-ink">{title}</h1>
+          </div>
+          <div class="truncate text-sm text-muted">{user.email}</div>
+        </header>
+        <main class="flex-1 px-4 py-6 lg:px-6">
+          <slot />
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

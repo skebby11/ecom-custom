@@ -1,0 +1,28 @@
+---
+import AdminLayout from '~/layouts/AdminLayout.astro'
+import ProductForm from '~/components/admin/ProductForm.astro'
+import { requireSession, getProduct, listCollections } from '~/lib/admin-api'
+
+const session = await requireSession(Astro)
+if (session instanceof Response) return session
+const user = session
+
+// Id numerico: un valore non numerico nel path finirebbe in un template literal
+// che diventa un path URL, e `URL` normalizza segmenti "." e ".." cambiando
+// l'endpoint API chiamato.
+const id = Number(Astro.params.id)
+if (!Number.isInteger(id) || id <= 0) return Astro.redirect('/admin/prodotti')
+
+const [product, collections] = await Promise.all([
+  getProduct(Astro.request, id),
+  listCollections(Astro.request),
+])
+
+if (!product) {
+  return Astro.redirect('/admin/prodotti')
+}
+---
+
+<AdminLayout title={`Modifica · ${product.title}`} user={user}>
+  <ProductForm mode="edit" product={product} collections={collections} />
+</AdminLayout>

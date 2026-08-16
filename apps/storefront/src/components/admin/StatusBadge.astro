@@ -1,0 +1,40 @@
+---
+import type { OrderStatus, ProductStatus } from '@ecom/shared'
+
+export interface Props {
+  status: ProductStatus | OrderStatus
+}
+
+const { status } = Astro.props
+
+const colors: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-700',
+  active: 'bg-emerald-100 text-emerald-700',
+  archived: 'bg-amber-100 text-amber-800',
+  pending: 'bg-amber-100 text-amber-800',
+  paid: 'bg-emerald-100 text-emerald-700',
+  fulfilled: 'bg-brand-100 text-brand-700',
+  failed: 'bg-red-100 text-red-700',
+  cancelled: 'bg-gray-100 text-gray-500',
+}
+
+const labels: Record<string, string> = {
+  draft: 'Bozza',
+  active: 'Attivo',
+  archived: 'Archiviato',
+  pending: 'In attesa',
+  paid: 'Pagato',
+  fulfilled: 'Evaso',
+  failed: 'Fallito',
+  cancelled: 'Annullato',
+}
+---
+
+<span
+  class:list={[
+    'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap',
+    colors[status] ?? 'bg-gray-100 text-gray-700',
+  ]}
+>
+  {labels[status] ?? status}
+</span>

@@ -1,0 +1,95 @@
+---
+import AdminLayout from '~/layouts/AdminLayout.astro'
+import StatusBadge from '~/components/admin/StatusBadge.astro'
+import Pagination from '~/components/admin/Pagination.astro'
+import { requireSession, listOrders, parseOrderStatus } from '~/lib/admin-api'
+import { formatPrice, orderStatuses } from '@ecom/shared/format'
+import { type OrderStatus } from '@ecom/shared'
+
+const session = await requireSession(Astro)
+if (session instanceof Response) return session
+const user = session
+
+const statusLabels: Record<OrderStatus, string> = {
+  pending: 'In attesa',
+  paid: 'Pagato',
+  fulfilled: 'Evaso',
+  failed: 'Fallito',
+  cancelled: 'Annullato',
+}
+
+// Validato contro `orderStatuses`, non un semplice cast: un valore arbitrario in
+// querystring finirebbe altrimenti a listOrders senza controllo a runtime.
+const status = parseOrderStatus(Astro.url.searchParams.get('status')) ?? ''
+const page = Math.max(1, Number(Astro.url.searchParams.get('page') ?? '1') || 1)
+
+const result = await listOrders(Astro.request, { status, page, limit: 20 })
+
+function buildHref(targetPage: number): string {
+  const url = new URL(Astro.url)
+  url.searchParams.set('page', String(targetPage))
+  return url.pathname + url.search
+}
+---
+
+<AdminLayout title="Ordini" user={user}>
+  <form method="get" class="mb-4 flex flex-wrap items-end gap-3">
+    <div>
+      <label class="label" for="status">Stato</label>
+      <select class="input" id="status" name="status">
+        <option value="">Tutti</option>
+        {
+          orderStatuses.map((s) => (
+            <option value={s} selected={s === status}>
+              {statusLabels[s]}
+            </option>
+          ))
+        }
+      </select>
+    </div>
+    <button type="submit" class="btn-secondary">Filtra</button>
+  </form>
+
+  {
+    result.items.length === 0 ? (
+      <div class="card p-8 text-center">
+        <p class="text-muted">Nessun ordine trovato.</p>
+      </div>
+    ) : (
+      <div class="card overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="border-b border-line text-xs text-muted uppercase">
+            <tr>
+              <th class="px-4 py-2 font-medium">Numero</th>
+              <th class="px-4 py-2 font-medium">Data</th>
+              <th class="px-4 py-2 font-medium">Email</th>
+              <th class="px-4 py-2 font-medium">Stato</th>
+              <th class="px-4 py-2 text-right font-medium">Totale</th>
+              <th class="px-4 py-2 font-medium"> </th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.items.map((order) => (
+              <tr class="border-b border-line last:border-0">
+                <td class="px-4 py-2 font-medium text-ink">{order.number}</td>
+                <td class="px-4 py-2 text-muted">
+                  {new Date(order.createdAt).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' })}
+                </td>
+                <td class="px-4 py-2">{order.email}</td>
+                <td class="px-4 py-2">
+                  <StatusBadge status={order.status} />
+                </td>
+                <td class="px-4 py-2 text-right">{formatPrice(order.totalCents)}</td>
+                <td class="px-4 py-2 text-right">
+                  <a href={`/admin/ordini/${order.id}`} class="btn-ghost !px-2 !py-1">Dettaglio</a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  <Pagination page={result.page} pages={result.pages} buildHref={buildHref} />
+</AdminLayout>
