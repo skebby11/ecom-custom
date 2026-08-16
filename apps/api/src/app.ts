@@ -27,8 +27,12 @@ export function buildApp() {
   })
 
   // senza credentials:true i cookie di sessione admin non passerebbero al browser
+  // l'origine di sviluppo va ammessa solo fuori produzione: altrimenti una pagina
+  // servita da localhost potrebbe usare le credenziali di sessione admin in produzione
+  const allowedOrigins = new Set([env.PUBLIC_SITE_URL])
+  if (env.NODE_ENV !== 'production') allowedOrigins.add('http://localhost:4321')
   fastify.register(cors, {
-    origin: [...new Set([env.PUBLIC_SITE_URL, 'http://localhost:4321'])],
+    origin: [...allowedOrigins],
     credentials: true,
   })
   fastify.register(cookie)

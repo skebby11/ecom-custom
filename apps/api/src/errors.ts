@@ -18,6 +18,10 @@ export function notFound(message = 'Risorsa non trovata'): AppError {
   return new AppError(404, 'NOT_FOUND', message)
 }
 
+export function badRequest(message = 'Richiesta non valida', details?: unknown): AppError {
+  return new AppError(400, 'VALIDATION_ERROR', message, details)
+}
+
 export function unauthorized(message = 'Autenticazione richiesta'): AppError {
   return new AppError(401, 'UNAUTHORIZED', message)
 }

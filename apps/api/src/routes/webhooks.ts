@@ -31,6 +31,15 @@ export default async function webhooksRoutes(fastify: FastifyInstance): Promise<
         request.log.warn({ err }, 'firma webhook Stripe non valida')
         return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Firma webhook non valida', details: null } })
       }
+    } else if (env.NODE_ENV === 'production') {
+      // senza segreto configurato non c'è modo di verificare che il payload venga
+      // davvero da Stripe: in produzione un client qualunque potrebbe altrimenti
+      // forgiare un evento "checkout.session.completed" e far segnare come pagato
+      // un ordine arbitrario
+      request.log.error('webhook Stripe ricevuto senza firma verificabile')
+      return reply
+        .status(400)
+        .send({ error: { code: 'VALIDATION_ERROR', message: 'Firma webhook non valida', details: null } })
     } else {
       // nessun segreto configurato (tipicamente in sviluppo locale): si accetta il body così com'è
       event = JSON.parse(rawBody.toString('utf8')) as Stripe.Event

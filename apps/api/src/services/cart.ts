@@ -3,7 +3,7 @@ import { cartItems, carts, getDb, productImages, products, variants } from '@eco
 import { CURRENCY, calcShippingCents } from '@ecom/shared'
 import type { Cart, CartItem } from '@ecom/shared'
 import { and, eq, inArray } from 'drizzle-orm'
-import { notFound, outOfStock } from '../errors.js'
+import { badRequest, notFound, outOfStock } from '../errors.js'
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -45,14 +45,17 @@ async function loadCartItemsDetailed(cartId: string): Promise<CartItem[]> {
 
   return rows.map((r) => {
     const product = productById.get(r.productId)
+    // una foreign key rende il caso improbabile, ma scrivere una riga d'ordine con
+    // titolo/slug vuoti (snapshot immutabile) è peggio di un errore esplicito
+    if (!product) throw notFound('Prodotto non trovato per una riga del carrello')
     const images = imagesByProduct.get(r.productId) ?? []
     const image = images.length ? [...images].sort((a, b) => a.position - b.position)[0] : undefined
 
     return {
       id: r.id,
       variantId: r.variantId,
-      productSlug: product?.slug ?? '',
-      productTitle: product?.title ?? '',
+      productSlug: product.slug,
+      productTitle: product.title,
       variantTitle: r.variantTitle,
       sku: r.sku,
       imageUrl: image?.url ?? null,
@@ -88,45 +91,55 @@ export async function getCartOrThrow(cartId: string): Promise<Cart> {
 }
 
 export async function addCartItem(cartId: string, variantId: number, qty: number): Promise<Cart> {
+  if (!Number.isInteger(qty) || qty <= 0) throw badRequest('La quantità deve essere un intero positivo')
+
   const db = getDb()
 
-  const [cart] = await db.select({ id: carts.id }).from(carts).where(eq(carts.id, cartId)).limit(1)
-  if (!cart) throw notFound('Carrello non trovato')
+  // lettura, verifica stock, scrittura e timestamp in un'unica transazione sincrona:
+  // altrimenti due richieste concorrenti sulla stessa variante possono leggere lo
+  // stesso `existing.qty` e perdere un incremento (o creare righe duplicate)
+  db.transaction((tx) => {
+    const [cart] = tx.select({ id: carts.id }).from(carts).where(eq(carts.id, cartId)).limit(1).all()
+    if (!cart) throw notFound('Carrello non trovato')
 
-  const [variant] = await db.select().from(variants).where(eq(variants.id, variantId)).limit(1)
-  if (!variant) throw notFound('Variante non trovata')
+    const [variant] = tx.select().from(variants).where(eq(variants.id, variantId)).limit(1).all()
+    if (!variant) throw notFound('Variante non trovata')
 
-  const [existing] = await db
-    .select()
-    .from(cartItems)
-    .where(and(eq(cartItems.cartId, cartId), eq(cartItems.variantId, variantId)))
-    .limit(1)
+    const [existing] = tx
+      .select()
+      .from(cartItems)
+      .where(and(eq(cartItems.cartId, cartId), eq(cartItems.variantId, variantId)))
+      .limit(1)
+      .all()
 
-  // aggiungere una variante già presente somma le quantità
-  const alreadyInCart = existing?.qty ?? 0
-  const desiredQty = alreadyInCart + qty
-  if (desiredQty > variant.stock) {
-    // il messaggio riporta quanti pezzi si possono ancora aggiungere, non lo stock
-    // totale: con 5 pezzi già nel carrello e 14 a magazzino, aggiungibili sono 9
-    const addable = Math.max(0, variant.stock - alreadyInCart)
-    throw outOfStock(
-      addable === 0
-        ? `Hai già nel carrello tutti i ${variant.stock} pezzi disponibili`
-        : `Disponibilità insufficiente: puoi aggiungerne ancora ${addable}`
-    )
-  }
+    // aggiungere una variante già presente somma le quantità
+    const alreadyInCart = existing?.qty ?? 0
+    const desiredQty = alreadyInCart + qty
+    if (desiredQty > variant.stock) {
+      // il messaggio riporta quanti pezzi si possono ancora aggiungere, non lo stock
+      // totale: con 5 pezzi già nel carrello e 14 a magazzino, aggiungibili sono 9
+      const addable = Math.max(0, variant.stock - alreadyInCart)
+      throw outOfStock(
+        addable === 0
+          ? `Hai già nel carrello tutti i ${variant.stock} pezzi disponibili`
+          : `Disponibilità insufficiente: puoi aggiungerne ancora ${addable}`
+      )
+    }
 
-  if (existing) {
-    await db.update(cartItems).set({ qty: desiredQty }).where(eq(cartItems.id, existing.id))
-  } else {
-    await db.insert(cartItems).values({ cartId, variantId, qty: desiredQty })
-  }
-  await db.update(carts).set({ updatedAt: nowIso() }).where(eq(carts.id, cartId))
+    if (existing) {
+      tx.update(cartItems).set({ qty: desiredQty }).where(eq(cartItems.id, existing.id)).run()
+    } else {
+      tx.insert(cartItems).values({ cartId, variantId, qty: desiredQty }).run()
+    }
+    tx.update(carts).set({ updatedAt: nowIso() }).where(eq(carts.id, cartId)).run()
+  })
 
   return serializeCart(cartId)
 }
 
 export async function updateCartItem(cartId: string, itemId: number, qty: number): Promise<Cart> {
+  if (!Number.isInteger(qty) || qty < 0) throw badRequest('La quantità deve essere un intero maggiore o uguale a zero')
+
   const db = getDb()
 
   const [item] = await db

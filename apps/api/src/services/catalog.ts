@@ -22,7 +22,7 @@ import type {
   ProductStatus,
 } from '@ecom/shared'
 import { and, desc, eq, inArray, like, or, sql } from 'drizzle-orm'
-import { notFound } from '../errors.js'
+import { badRequest, notFound } from '../errors.js'
 
 type ProductRow = typeof products.$inferSelect
 type VariantRow = typeof variants.$inferSelect
@@ -74,6 +74,48 @@ function firstImage(rows: ImageRow[]): Image | null {
 
 function toImage(row: ImageRow): Image {
   return { id: row.id, url: row.url, alt: row.alt, position: row.position }
+}
+
+type OptionAxisInput = { name: string; values: string[] }
+
+/**
+ * Collega ogni valore scelto per una variante all'id di `option_value` corrispondente
+ * al suo asse. Condivisa da `adminCreateProduct` e `adminReplaceProduct`: un payload
+ * che nomina un valore non dichiarato per l'asse, o che fornisce un numero di
+ * selezioni diverso dagli assi del prodotto, viene rifiutato con un 400 invece di
+ * scrivere silenziosamente una variante priva del link per quell'asse — la vetrina
+ * non potrebbe più mappare quella selezione alla variante.
+ */
+function resolveVariantOptionLinks(
+  variantId: number,
+  selections: string[],
+  options: OptionAxisInput[],
+  optionIdsByAxis: number[],
+  optionValueIdsByAxis: number[][]
+): { variantId: number; optionValueId: number; optionId: number }[] {
+  if (selections.length !== options.length) {
+    throw badRequest('Il numero di valori opzione della variante non corrisponde agli assi del prodotto')
+  }
+  return selections.map((value, axisIndex) => {
+    const axis = options[axisIndex]
+    const optionId = optionIdsByAxis[axisIndex]
+    if (!axis || optionId === undefined) {
+      throw badRequest('Asse opzione non valido per questa variante')
+    }
+    const idx = axis.values.indexOf(value)
+    const valueId = idx >= 0 ? optionValueIdsByAxis[axisIndex]?.[idx] : undefined
+    if (idx < 0 || valueId === undefined) {
+      throw badRequest(`Valore opzione "${value}" non dichiarato per l'asse "${axis.name}"`)
+    }
+    return { variantId, optionValueId: valueId, optionId }
+  })
+}
+
+/** Un valore ripetuto nello stesso asse renderebbe ambigua la risoluzione (`indexOf` si ferma al primo). */
+function assertNoDuplicateValues(opt: OptionAxisInput): void {
+  if (new Set(opt.values).size !== opt.values.length) {
+    throw badRequest(`Valori duplicati nell'opzione "${opt.name}"`)
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -372,6 +414,7 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
     const optionIdsByAxis: number[] = []
     for (let i = 0; i < input.options.length; i++) {
       const opt = input.options[i]!
+      assertNoDuplicateValues(opt)
       const [optionRow] = tx
         .insert(productOptions)
         .values({ productId: product!.id, name: opt.name, position: i })
@@ -406,23 +449,16 @@ export async function adminCreateProduct(input: AdminProductInput): Promise<Prod
         .returning()
         .all()
 
-      const links = variantInput.optionValues
-        .map((value, axisIndex) => {
-          const axis = input.options[axisIndex]
-          if (!axis) return null
-          const idx = axis.values.indexOf(value)
-          const valueId = idx >= 0 ? optionValueIdsByAxis[axisIndex]?.[idx] : undefined
-          const optionId = optionIdsByAxis[axisIndex]
-          // `optionId` è ridondante rispetto al valore, ma è ciò su cui il database
-          // impone una sola riga per asse: senza, due valori dello stesso asse
-          // finirebbero sulla stessa variante
-          return valueId !== undefined && optionId !== undefined
-            ? { variantId: variantRow!.id, optionValueId: valueId, optionId }
-            : null
-        })
-        .filter(
-          (l): l is { variantId: number; optionValueId: number; optionId: number } => l !== null
-        )
+      // `optionId` è ridondante rispetto al valore, ma è ciò su cui il database
+      // impone una sola riga per asse: senza, due valori dello stesso asse
+      // finirebbero sulla stessa variante
+      const links = resolveVariantOptionLinks(
+        variantRow!.id,
+        variantInput.optionValues,
+        input.options,
+        optionIdsByAxis,
+        optionValueIdsByAxis
+      )
 
       if (links.length) tx.insert(variantOptionValues).values(links).run()
     }
@@ -496,6 +532,7 @@ export async function adminReplaceProduct(id: number, input: AdminProductInput):
     const optionIdsByAxis: number[] = []
     for (let i = 0; i < input.options.length; i++) {
       const opt = input.options[i]!
+      assertNoDuplicateValues(opt)
       const [optionRow] = tx
         .insert(productOptions)
         .values({ productId: id, name: opt.name, position: i })
@@ -515,20 +552,7 @@ export async function adminReplaceProduct(id: number, input: AdminProductInput):
     }
 
     const resolveLinks = (variantId: number, selections: string[]) =>
-      selections
-        .map((value, axisIndex) => {
-          const axis = input.options[axisIndex]
-          if (!axis) return null
-          const idx = axis.values.indexOf(value)
-          const valueId = idx >= 0 ? optionValueIdsByAxis[axisIndex]?.[idx] : undefined
-          const optionId = optionIdsByAxis[axisIndex]
-          return valueId !== undefined && optionId !== undefined
-            ? { variantId, optionValueId: valueId, optionId }
-            : null
-        })
-        .filter(
-          (l): l is { variantId: number; optionValueId: number; optionId: number } => l !== null
-        )
+      resolveVariantOptionLinks(variantId, selections, input.options, optionIdsByAxis, optionValueIdsByAxis)
 
     for (let vIdx = 0; vIdx < input.variants.length; vIdx++) {
       const variantInput = input.variants[vIdx]!

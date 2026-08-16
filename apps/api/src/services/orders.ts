@@ -93,15 +93,18 @@ export async function beginCheckout(input: CheckoutInput): Promise<{ url: string
   // sincrona: better-sqlite3 non supporta callback async dentro db.transaction();
   // la chiamata Stripe resta fuori, dopo il commit (vedi sotto)
   db.transaction((tx) => {
-    // numero progressivo per anno, calcolato dentro la stessa transazione dell'insert
+    // numero progressivo per anno, calcolato dentro la stessa transazione dell'insert.
+    // si usa il massimo progressivo esistente e non count(*): dopo la cancellazione
+    // di un ordine (es. ORD-2026-0002 su 0001-0003), count(*)+1 produrrebbe di nuovo
+    // ORD-2026-0003, già esistente
     const year = new Date().getFullYear()
     const prefix = `ORD-${year}-`
-    const [countRow] = tx
-      .select({ count: sql<number>`count(*)` })
+    const [maxRow] = tx
+      .select({ maxSeq: sql<number>`coalesce(max(cast(substr(${orders.number}, ${prefix.length + 1}) as integer)), 0)` })
       .from(orders)
       .where(like(orders.number, `${prefix}%`))
       .all()
-    const number = `${prefix}${String((countRow?.count ?? 0) + 1).padStart(4, '0')}`
+    const number = `${prefix}${String((maxRow?.maxSeq ?? 0) + 1).padStart(4, '0')}`
 
     tx.insert(orders)
       .values({

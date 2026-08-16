@@ -32,7 +32,16 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 })
 
-export const env = envSchema.parse(process.env)
+const parsedEnv = envSchema.parse(process.env)
+
+// il valore di default esiste solo per lo sviluppo locale: partire in produzione
+// con un segreto di sessione noto pubblicamente (questo repository) equivale a non
+// averne uno, quindi va rifiutato esplicitamente
+if (parsedEnv.NODE_ENV === 'production' && parsedEnv.SESSION_SECRET === 'dev-secret-change-me') {
+  throw new Error('SESSION_SECRET deve essere impostato in produzione (valore di default non consentito)')
+}
+
+export const env = parsedEnv
 
 /** Placeholder presente in `.env.example`: equivale a "non configurato". */
 export const STRIPE_PLACEHOLDER_KEY = 'sk_test_xxx'

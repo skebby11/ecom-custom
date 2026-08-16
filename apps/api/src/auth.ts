@@ -29,10 +29,21 @@ export function verifyPassword(plain: string, stored: string): boolean {
 
   const salt = Buffer.from(saltHex, 'hex')
   const expected = Buffer.from(hashHex, 'hex')
-  const actual = scryptSync(plain, salt, expected.length)
-  // lunghezza uguale richiesta da timingSafeEqual, e comunque già garantita dal formato
-  return actual.length === expected.length && timingSafeEqual(actual, expected)
+  // Buffer.from(hex) tronca silenziosamente su caratteri non esadecimali invece di
+  // fallire: un hash memorizzato corrotto o troncato produrrebbe un buffer più corto,
+  // scryptSync verrebbe chiamato con keylen 0 e la verifica passerebbe per qualunque
+  // password. Si rifiuta subito qualunque cosa non abbia la lunghezza attesa.
+  if (salt.length !== 16 || expected.length !== SCRYPT_KEYLEN) return false
+  const actual = scryptSync(plain, salt, SCRYPT_KEYLEN)
+  return timingSafeEqual(actual, expected)
 }
+
+/**
+ * Hash fittizio con formato valido ma password impossibile da indovinare: usato per
+ * far girare `verifyPassword` anche quando l'email non corrisponde a nessun utente,
+ * così il tempo di risposta del login non rivela quali indirizzi esistono.
+ */
+export const DUMMY_PASSWORD_HASH = hashPassword(randomBytes(32).toString('hex'))
 
 export async function createSession(userId: number): Promise<{ id: string; expiresAt: string }> {
   const db = getDb()
