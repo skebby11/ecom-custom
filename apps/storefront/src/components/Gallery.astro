@@ -1,0 +1,73 @@
+---
+import type { Image } from '@ecom/shared'
+
+export interface Props {
+  images: Image[]
+  productTitle: string
+}
+
+const { images, productTitle } = Astro.props
+const gallery = images.length > 0 ? images : [{ id: 0, url: '/placeholder-product.svg', alt: productTitle, position: 0 }]
+const first = gallery[0]
+---
+
+<div data-gallery>
+  <div class="aspect-square overflow-hidden rounded-(--radius-card) border border-line bg-surface-alt">
+    <img
+      data-main-image
+      src={first.url}
+      alt={first.alt ?? productTitle}
+      width="900"
+      height="900"
+      loading="eager"
+      fetchpriority="high"
+      class="h-full w-full object-cover"
+    />
+  </div>
+
+  {gallery.length > 1 && (
+    <ul class="mt-3 flex gap-2 overflow-x-auto pb-1">
+      {gallery.map((img, i) => (
+        <li>
+          <button
+            type="button"
+            data-thumb
+            data-full={img.url}
+            data-alt={img.alt ?? productTitle}
+            aria-label={`Mostra immagine ${i + 1} di ${gallery.length}`}
+            aria-current={i === 0 ? 'true' : 'false'}
+            class="block h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 border-transparent aria-[current=true]:border-brand-500"
+          >
+            <img
+              src={img.url}
+              alt=""
+              width="64"
+              height="64"
+              loading="lazy"
+              class="h-full w-full object-cover"
+            />
+          </button>
+        </li>
+      ))}
+    </ul>
+  )}
+</div>
+
+<script>
+  // Cambio immagine principale al click su una thumbnail. Solo DOM nativo.
+  const root = document.querySelector('[data-gallery]')
+  if (root) {
+    const mainImage = root.querySelector<HTMLImageElement>('[data-main-image]')
+    const thumbs = root.querySelectorAll<HTMLButtonElement>('[data-thumb]')
+
+    thumbs.forEach((thumb) => {
+      thumb.addEventListener('click', () => {
+        if (!mainImage) return
+        mainImage.src = thumb.dataset.full ?? mainImage.src
+        mainImage.alt = thumb.dataset.alt ?? mainImage.alt
+        thumbs.forEach((t) => t.setAttribute('aria-current', 'false'))
+        thumb.setAttribute('aria-current', 'true')
+      })
+    })
+  }
+</script>

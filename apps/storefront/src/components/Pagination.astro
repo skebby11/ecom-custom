@@ -1,0 +1,57 @@
+---
+export interface Props {
+  url: URL
+  page: number
+  pages: number
+}
+
+const { url, page, pages } = Astro.props
+
+function hrefForPage(n: number): string {
+  const params = new URLSearchParams(url.search)
+  params.set('page', String(n))
+  return `${url.pathname}?${params.toString()}`
+}
+
+const windowStart = Math.max(1, page - 2)
+const windowEnd = Math.min(pages, page + 2)
+const pageNumbers = Array.from({ length: windowEnd - windowStart + 1 }, (_, i) => windowStart + i)
+---
+
+{pages > 1 && (
+  <nav aria-label="Paginazione" class="flex items-center justify-center gap-1 pt-8">
+    {page > 1 ? (
+      <a href={hrefForPage(page - 1)} class="btn-secondary" rel="prev">Precedente</a>
+    ) : (
+      <span class="btn-secondary pointer-events-none opacity-40" aria-disabled="true">Precedente</span>
+    )}
+
+    {windowStart > 1 && (
+      <>
+        <a href={hrefForPage(1)} class="btn-ghost">1</a>
+        {windowStart > 2 && <span class="px-1 text-muted">…</span>}
+      </>
+    )}
+
+    {pageNumbers.map((n) =>
+      n === page ? (
+        <span aria-current="page" class="btn-primary">{n}</span>
+      ) : (
+        <a href={hrefForPage(n)} class="btn-ghost">{n}</a>
+      )
+    )}
+
+    {windowEnd < pages && (
+      <>
+        {windowEnd < pages - 1 && <span class="px-1 text-muted">…</span>}
+        <a href={hrefForPage(pages)} class="btn-ghost">{pages}</a>
+      </>
+    )}
+
+    {page < pages ? (
+      <a href={hrefForPage(page + 1)} class="btn-secondary" rel="next">Successiva</a>
+    ) : (
+      <span class="btn-secondary pointer-events-none opacity-40" aria-disabled="true">Successiva</span>
+    )}
+  </nav>
+)}

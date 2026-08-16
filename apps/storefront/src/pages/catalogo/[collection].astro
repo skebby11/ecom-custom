@@ -1,0 +1,93 @@
+---
+import Layout from '~/layouts/Layout.astro'
+import ProductCard from '~/components/ProductCard.astro'
+import PlpFilters from '~/components/PlpFilters.astro'
+import Pagination from '~/components/Pagination.astro'
+import EmptyState from '~/components/EmptyState.astro'
+import Breadcrumb from '~/components/Breadcrumb.astro'
+import { api } from '~/lib/api'
+import { productSortValues } from '@ecom/shared/format'
+import type { Collection, Paginated, ProductListItem, ProductSort } from '@ecom/shared'
+
+const { collection: collectionSlug } = Astro.params
+if (!collectionSlug) return Astro.rewrite('/404')
+
+// `api.collection` può fallire per un errore di rete/5xx, non solo restituire
+// `null`: va gestito come pagina temporaneamente non disponibile, senza far
+// fallire l'intero render (che darebbe un 500 generico) né confonderlo con un
+// 404 vero e proprio (collezione inesistente).
+let collection: Collection | null = null
+let collectionLoadError = false
+try {
+  collection = await api.collection(collectionSlug)
+} catch (err) {
+  console.error('[plp-collection] impossibile caricare la collezione', err)
+  collectionLoadError = true
+}
+
+if (!collectionLoadError && !collection) return Astro.rewrite('/404')
+
+const url = Astro.url
+const q = url.searchParams.get('q')?.trim() || undefined
+const sortParam = url.searchParams.get('sort')
+const sort: ProductSort = productSortValues.includes(sortParam as ProductSort) ? (sortParam as ProductSort) : 'new'
+const page = Math.max(1, Number(url.searchParams.get('page') ?? '1') || 1)
+const inStock = url.searchParams.get('inStock') === 'true' ? true : undefined
+
+let result: Paginated<ProductListItem> = { items: [], total: 0, page: 1, pages: 1, limit: 12 }
+let loadError = collectionLoadError
+
+if (!collectionLoadError) {
+  try {
+    result = await api.products({ q, sort, page, collection: collectionSlug, inStock, limit: 12 })
+  } catch (err) {
+    console.error('[plp-collection] impossibile caricare i prodotti', err)
+    loadError = true
+  }
+}
+---
+
+<Layout
+  title={collection ? `${collection.title} — Catalogo` : 'Collezione non disponibile'}
+  description={collection?.description ?? `Scopri i prodotti della collezione ${collectionSlug}.`}
+>
+  <div class="container-page py-10">
+    {collection && (
+      <>
+        <Breadcrumb items={[{ label: 'Catalogo', href: '/catalogo' }, { label: collection.title }]} />
+        <h1 class="mt-3 text-3xl font-bold text-ink">{collection.title}</h1>
+        {collection.description && <p class="mt-2 max-w-2xl text-sm text-muted">{collection.description}</p>}
+        <p class="mt-2 text-sm text-muted">{result.total} prodotti trovati</p>
+      </>
+    )}
+
+    <div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[260px_1fr]">
+      <aside>
+        <PlpFilters actionPath={`/catalogo/${collectionSlug}`} current={{ q, sort, inStock }} />
+      </aside>
+
+      <div>
+        {loadError ? (
+          <EmptyState
+            title="Collezione non disponibile"
+            description="Non riusciamo a contattare il negozio in questo momento. Riprova tra poco."
+          />
+        ) : result.items.length === 0 ? (
+          <EmptyState
+            title={q ? `Nessun risultato per “${q}”` : 'Nessun prodotto in questa collezione'}
+            description="Prova a modificare i filtri o torna al catalogo completo."
+            ctaHref="/catalogo"
+            ctaLabel="Vai al catalogo"
+          />
+        ) : (
+          <>
+            <div class="grid grid-cols-2 gap-5 sm:grid-cols-3 xl:grid-cols-4">
+              {result.items.map((p, i) => <ProductCard product={p} priority={i < 4} />)}
+            </div>
+            <Pagination url={url} page={result.page} pages={result.pages} />
+          </>
+        )}
+      </div>
+    </div>
+  </div>
+</Layout>

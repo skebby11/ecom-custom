@@ -1,0 +1,25 @@
+{
+  "name": "@ecom/storefront",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "build": "astro build",
+    "start": "node ./dist/server/entry.mjs",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/node": "^9.0.0",
+    "@ecom/shared": "*",
+    "@tailwindcss/vite": "^4.0.0",
+    "astro": "^5.14.2",
+    "cookie": "^1.0.2",
+    "tailwindcss": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2"
+  },
+  "//": "cookie è dichiarato esplicitamente: @fastify/cookie tira cookie@2 (API rinominata in parseCookie/stringifyCookie) che npm issa alla root e rompe il bundle server di Astro, il quale importa parse/serialize da cookie@1."
+}

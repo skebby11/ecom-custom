@@ -1,0 +1,68 @@
+---
+import type { Collection, ProductSort } from '@ecom/shared'
+
+export interface Props {
+  actionPath: string
+  collections?: Collection[]
+  current: {
+    q?: string
+    sort: ProductSort
+    collection?: string
+    inStock?: boolean
+  }
+}
+
+const { actionPath, collections, current } = Astro.props
+
+const sortOptions: { value: ProductSort; label: string }[] = [
+  { value: 'new', label: 'Novità' },
+  { value: 'price-asc', label: 'Prezzo crescente' },
+  { value: 'price-desc', label: 'Prezzo decrescente' },
+  { value: 'title', label: 'Nome A-Z' },
+]
+---
+
+<form method="get" action={actionPath} class="card flex flex-col gap-5 p-5">
+  <div>
+    <label for="filter-q" class="label">Cerca</label>
+    <input id="filter-q" type="search" name="q" value={current.q ?? ''} placeholder="Nome prodotto…" class="input" />
+  </div>
+
+  {collections && collections.length > 0 && (
+    <div>
+      <label for="filter-collection" class="label">Collezione</label>
+      <select id="filter-collection" name="collection" class="input">
+        <option value="" selected={!current.collection}>Tutte</option>
+        {collections.map((c) => (
+          <option value={c.slug} selected={current.collection === c.slug}>{c.title}</option>
+        ))}
+      </select>
+    </div>
+  )}
+
+  <div>
+    <label for="filter-sort" class="label">Ordina per</label>
+    <select id="filter-sort" name="sort" class="input">
+      {sortOptions.map((o) => (
+        <option value={o.value} selected={current.sort === o.value}>{o.label}</option>
+      ))}
+    </select>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <input
+      id="filter-instock"
+      type="checkbox"
+      name="inStock"
+      value="true"
+      checked={current.inStock === true}
+      class="h-4 w-4 rounded border-line text-brand-600 focus:ring-brand-500"
+    />
+    <label for="filter-instock" class="text-sm text-ink">Solo disponibili</label>
+  </div>
+
+  <div class="flex gap-2">
+    <button type="submit" class="btn-primary flex-1">Applica filtri</button>
+    <a href={actionPath} class="btn-ghost">Azzera</a>
+  </div>
+</form>
