@@ -134,6 +134,8 @@ export const api = {
 
   createCart: () => apiFetch<Cart>('/api/cart', { method: 'POST' }),
 
+  // `id` è codificato come singolo segmento di path: senza `encodeURIComponent`
+  // uno `/` nell'id cambierebbe il percorso interrogato sull'API.
   order: (id: string, token: string) =>
-    apiFetchOrNull<Order>(`/api/orders/${id}`, { query: { token } }),
+    apiFetchOrNull<Order>(`/api/orders/${encodeURIComponent(id)}`, { query: { token } }),
 }

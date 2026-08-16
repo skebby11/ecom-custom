@@ -4,22 +4,34 @@ import { defineConfig } from 'astro/config'
 
 const FALLBACK_SITE_URL = 'http://localhost:4321'
 
+const isProd = process.env.NODE_ENV === 'production'
+
 /**
- * Valida `PUBLIC_SITE_URL` una sola volta: se non è impostato o non è un URL
- * valido, sia `site` che `allowedDomains` devono ricadere sullo stesso fallback,
- * altrimenti Astro costruirebbe `Astro.site` da un valore che il controllo CSRF
- * (vedi sotto) considera già invalido.
+ * Valida `PUBLIC_SITE_URL` una sola volta. In produzione è obbligatorio: un
+ * fallback silenzioso a `localhost` significherebbe far dipendere `allowedDomains`
+ * (vedi sotto) da un valore non di produzione, riaprendo la porta all'host header
+ * injection che quella lista dovrebbe impedire. In sviluppo un valore mancante o
+ * non valido ricade sul fallback locale con un avviso.
  */
 function parseSiteUrl(value) {
+  if (!value) {
+    if (isProd) {
+      throw new Error('[astro.config] PUBLIC_SITE_URL è obbligatorio in produzione')
+    }
+    return new URL(FALLBACK_SITE_URL)
+  }
   try {
     return new URL(value)
   } catch {
+    if (isProd) {
+      throw new Error(`[astro.config] PUBLIC_SITE_URL non è un URL valido: ${value}`)
+    }
     console.warn(`[astro.config] PUBLIC_SITE_URL non è un URL valido, uso il fallback: ${value}`)
     return new URL(FALLBACK_SITE_URL)
   }
 }
 
-const parsedSiteUrl = parseSiteUrl(process.env.PUBLIC_SITE_URL ?? FALLBACK_SITE_URL)
+const parsedSiteUrl = parseSiteUrl(process.env.PUBLIC_SITE_URL)
 const siteUrl = parsedSiteUrl.href
 
 /**
@@ -29,12 +41,20 @@ const siteUrl = parsedSiteUrl.href
  * rifiuta con 403 ogni POST di form: login admin, cambio stato ordine, collezioni.
  * Il valore segue `PUBLIC_SITE_URL` (già validato sopra), quindi in produzione
  * basta impostare quello.
+ *
+ * I pattern `localhost`/`127.0.0.1` sono ammessi solo in sviluppo: se restassero
+ * validi anche in produzione, un proxy che inoltra `X-Forwarded-Host` così come
+ * arriva dal client permetterebbe di forzare `Astro.url` su `localhost`,
+ * aprendo la porta a cache poisoning sugli URL assoluti generati dal server.
  */
 function allowedDomainsFrom({ hostname, protocol, port }) {
   return [
-    // sempre presenti: sviluppo locale su qualunque porta
-    { hostname: 'localhost', protocol: 'http' },
-    { hostname: '127.0.0.1', protocol: 'http' },
+    ...(isProd
+      ? []
+      : [
+          { hostname: 'localhost', protocol: 'http' },
+          { hostname: '127.0.0.1', protocol: 'http' },
+        ]),
     {
       hostname,
       protocol: protocol.replace(':', ''),
