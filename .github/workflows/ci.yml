@@ -1,0 +1,183 @@
+name: CI
+
+# Gira su ogni pull request verso main e su ogni push su main: verifica che il
+# monorepo compili (typecheck + build), che schema/seed del database reggano
+# e che il codice rispetti le convenzioni non negoziabili di CLAUDE.md.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# In una pull request annulliamo i run precedenti ancora in coda sulla stessa
+# PR: non ha senso verificare un diff già superato da un nuovo push. Su main
+# invece ogni push deve completare il proprio run fino in fondo, altrimenti
+# un push successivo cancellerebbe la verifica dell'ultimo stato mergiato.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# GITHUB_TOKEN in sola lettura: nessun job qui pusha commit, crea release o
+# scrive su GitHub, quindi non serve altro.
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Typecheck e build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout codice
+        uses: actions/checkout@v4
+        with:
+          # Il job non fa mai un push: non serve che il token resti
+          # nella config git locale dopo il checkout (artipacked).
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # .nvmrc fissa una versione maggiore esatta (20), valida anche in
+          # locale. "engines.node" in package.json resta un range (">=20"):
+          # è compatibilità dichiarata del progetto, non va letto da qui,
+          # perché actions/setup-node risolverebbe un range alla versione
+          # più recente disponibile (è già successo: Node 24, dove il
+          # binding nativo di better-sqlite3 va in assert durante il seed).
+          node-version-file: .nvmrc
+          cache: 'npm'
+
+      - name: Installazione dipendenze (npm ci)
+        run: npm ci
+
+      - name: Controllo tipi (typecheck)
+        run: npm run typecheck
+
+      - name: Build (API + storefront)
+        # astro build imposta NODE_ENV=production da solo: apps/storefront/astro.config.mjs
+        # rifiuta il build in produzione se PUBLIC_SITE_URL manca, non è un URL valido o
+        # punta a localhost/127.0.0.1. Serve quindi un'origine pubblica plausibile, non
+        # il default di sviluppo dell'.env.example.
+        run: npm run build
+        env:
+          PUBLIC_SITE_URL: https://esempio.test
+
+      - name: Verifica che il bundle client non contenga localhost
+        # Guardia contro una regressione reale già avvenuta: PUBLIC_SITE_URL e
+        # PUBLIC_API_URL sono variabili Astro/Vite inglobate nel bundle browser
+        # a build time, e in passato un http://localhost:... è finito dentro
+        # un'immagine di produzione dello storefront. Il controllo è ristretto
+        # a dist/client (l'output servito al browser): dist/server può
+        # legittimamente contenere riferimenti locali (fallback lato server
+        # usati solo in sviluppo) e non va incluso in questo grep.
+        run: |
+          bundle_dir="apps/storefront/dist/client"
+          if [ ! -d "$bundle_dir" ]; then
+            echo "::error::Bundle client non trovato: $bundle_dir (la build non ha prodotto l'output atteso)."
+            exit 1
+          fi
+
+          # Non uso "if grep ...": grep esce con status 2 (non 0/1) se la
+          # directory non è leggibile, e un `if` tratterebbe quel caso come
+          # "nessun match", facendo passare una scansione fallita come pulita.
+          set +e
+          grep -rniE "localhost|127\.0\.0\.1" "$bundle_dir"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Trovato un riferimento a localhost/127.0.0.1 nel bundle client dello storefront (sopra). PUBLIC_SITE_URL o PUBLIC_API_URL non sono stati impostati a un'origine pubblica in fase di build: un valore di sviluppo rischia di finire in produzione."
+            exit 1
+          fi
+          if [ "$status" -ne 1 ]; then
+            echo "::error::Impossibile analizzare il bundle client dello storefront (grep uscito con status $status)."
+            exit "$status"
+          fi
+          echo "Bundle client pulito: nessun riferimento a localhost/127.0.0.1 in apps/storefront/dist/client."
+
+  database:
+    name: Migrazione e seed database
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout codice
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Stessa fonte deterministica del job "static": vedi commento lì.
+          node-version-file: .nvmrc
+          cache: 'npm'
+
+      # Job separato da "static" così dal nome del check rosso si capisce subito
+      # se è il database o la build a essere rotta. Rifà il proprio npm ci
+      # invece di ereditare i node_modules del job static: i due job girano in
+      # parallelo (nessuna dipendenza reale fra i due), e condividere
+      # l'installazione richiederebbe un upload/download di artifact più lento
+      # e più complesso del semplice npm ci, che qui impiega pochi secondi
+      # grazie alla cache npm di actions/setup-node.
+      - name: Installazione dipendenze (npm ci)
+        run: npm ci
+
+      - name: Migrazione database
+        # I comandi db:* girano fuori dal processo API: usano solo le variabili
+        # d'ambiente impostate qui (non c'è alcun file .env nel runner).
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ./data/ecom-ci.db
+
+      - name: Seed database
+        # packages/db/src/seed.ts è fail-closed: NODE_ENV assente viene trattata
+        # come produzione e il seed si rifiuta di girare, quindi va impostata
+        # esplicitamente a "development". ADMIN_PASSWORD è generata qui a runtime
+        # (openssl rand) invece di essere un letterale nel file: uno scanner di
+        # secret (es. DeepSource SCT-A000) segnala qualunque password fissa nel
+        # sorgente, anche se il database è SQLite effimero locale al runner.
+        # ::add-mask:: impedisce che il valore compaia nei log del job; niente
+        # `set -x` in questo step, né echo del valore. Non usiamo secrets.* di
+        # GitHub: richiederebbe una configurazione manuale sul repo che la CI,
+        # così com'è, non deve presupporre.
+        run: |
+          ADMIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          export ADMIN_PASSWORD
+          npm run db:seed
+        env:
+          NODE_ENV: development
+          DATABASE_URL: ./data/ecom-ci.db
+          # Non è una credenziale: è l'email di test del seed, fissa apposta
+          # per essere riconoscibile nei log del runner.
+          ADMIN_EMAIL: admin@ci.q4studio.test
+
+  convenzioni:
+    name: Convenzioni di progetto (CLAUDE.md)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout codice
+        uses: actions/checkout@v4
+        with:
+          # Serve la storia completa per calcolare il diff fra base e head
+          # della PR (vedi scripts/ci/check-conventions.mjs). Repo piccolo:
+          # il costo di un fetch-depth 0 è trascurabile.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Stessa fonte deterministica degli altri due job: vedi commento nel job "static".
+          node-version-file: .nvmrc
+
+      - name: Verifica convenzioni CLAUDE.md
+        # Grep/script di shell in Node (niente dipendenze da installare: solo
+        # moduli core), non serve npm ci per questo job. Controlla: niente
+        # float per il denaro, niente contratti Zod duplicati fuori da
+        # packages/shared, docs/API.md aggiornata quando cambia una rotta
+        # (quest'ultimo solo sugli eventi pull_request, gestito nello script).
+        run: node scripts/ci/check-conventions.mjs
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
