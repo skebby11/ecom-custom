@@ -31,7 +31,21 @@ const isActive = (href: string) => (href === '/admin' ? path === '/admin' : path
   </head>
   <body class="min-h-screen bg-surface-alt text-sm text-ink">
     <div class="flex min-h-screen flex-col lg:flex-row">
-      <input type="checkbox" id="admin-nav-toggle" class="peer hidden" />
+      {
+        /*
+          I <label> di apertura/chiusura sono annidati dentro <aside> e <header>,
+          non fratelli diretti di questo checkbox: il combinatore `peer-*` di
+          Tailwind (selettore CSS "fratello generale") non li raggiungerebbe, quindi
+          l'indicatore di focus va sul checkbox stesso, reso temporaneamente visibile
+          (stesso pattern degli skip-link) invece che sulle label.
+        */
+      }
+      <input
+        type="checkbox"
+        id="admin-nav-toggle"
+        class="peer sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-50 focus-visible:h-6 focus-visible:w-6 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+        aria-label="Mostra o nascondi il menu di navigazione"
+      />
 
       <aside
         class="hidden flex-col border-b border-line bg-white peer-checked:flex lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r"

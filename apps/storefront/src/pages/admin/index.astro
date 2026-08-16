@@ -60,7 +60,7 @@ const cards = [
                       </a>
                     </td>
                     <td class="px-4 py-2 text-muted">
-                      {new Date(order.createdAt).toLocaleDateString('it-IT')}
+                      {new Date(order.createdAt).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' })}
                     </td>
                     <td class="px-4 py-2">{order.email}</td>
                     <td class="px-4 py-2">

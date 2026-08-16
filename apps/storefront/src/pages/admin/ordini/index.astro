@@ -2,7 +2,7 @@
 import AdminLayout from '~/layouts/AdminLayout.astro'
 import StatusBadge from '~/components/admin/StatusBadge.astro'
 import Pagination from '~/components/admin/Pagination.astro'
-import { requireSession, listOrders } from '~/lib/admin-api'
+import { requireSession, listOrders, parseOrderStatus } from '~/lib/admin-api'
 import { formatPrice, orderStatuses } from '@ecom/shared/format'
 import { type OrderStatus } from '@ecom/shared'
 
@@ -18,7 +18,9 @@ const statusLabels: Record<OrderStatus, string> = {
   cancelled: 'Annullato',
 }
 
-const status = (Astro.url.searchParams.get('status') ?? '') as OrderStatus | ''
+// Validato contro `orderStatuses`, non un semplice cast: un valore arbitrario in
+// querystring finirebbe altrimenti a listOrders senza controllo a runtime.
+const status = parseOrderStatus(Astro.url.searchParams.get('status')) ?? ''
 const page = Math.max(1, Number(Astro.url.searchParams.get('page') ?? '1') || 1)
 
 const result = await listOrders(Astro.request, { status, page, limit: 20 })
@@ -70,7 +72,9 @@ function buildHref(targetPage: number): string {
             {result.items.map((order) => (
               <tr class="border-b border-line last:border-0">
                 <td class="px-4 py-2 font-medium text-ink">{order.number}</td>
-                <td class="px-4 py-2 text-muted">{new Date(order.createdAt).toLocaleDateString('it-IT')}</td>
+                <td class="px-4 py-2 text-muted">
+                  {new Date(order.createdAt).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' })}
+                </td>
                 <td class="px-4 py-2">{order.email}</td>
                 <td class="px-4 py-2">
                   <StatusBadge status={order.status} />

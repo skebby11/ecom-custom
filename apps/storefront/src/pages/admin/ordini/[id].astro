@@ -1,7 +1,7 @@
 ---
 import AdminLayout from '~/layouts/AdminLayout.astro'
 import StatusBadge from '~/components/admin/StatusBadge.astro'
-import { requireSession, getOrder, updateOrderStatus } from '~/lib/admin-api'
+import { requireSession, getOrder, updateOrderStatus, parseOrderStatus } from '~/lib/admin-api'
 import { ApiError } from '~/lib/api'
 import { formatPrice, orderStatuses } from '@ecom/shared/format'
 import { type Order, type OrderStatus } from '@ecom/shared'
@@ -24,12 +24,18 @@ let statusError: string | null = null
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData()
-  const newStatus = String(form.get('status') ?? '') as OrderStatus
-  try {
-    await updateOrderStatus(Astro.request, id as string, newStatus)
-    return Astro.redirect(Astro.url.pathname)
-  } catch (err) {
-    statusError = err instanceof ApiError ? err.message : "Errore durante l'aggiornamento dello stato."
+  // Validato contro `orderStatuses`, non un semplice cast: un valore di form
+  // arbitrario raggiungerebbe altrimenti l'API admin senza controllo a runtime.
+  const newStatus = parseOrderStatus(form.get('status'))
+  if (!newStatus) {
+    statusError = 'Stato non valido.'
+  } else {
+    try {
+      await updateOrderStatus(Astro.request, id as string, newStatus)
+      return Astro.redirect(Astro.url.pathname)
+    } catch (err) {
+      statusError = err instanceof ApiError ? err.message : "Errore durante l'aggiornamento dello stato."
+    }
   }
 }
 
@@ -134,7 +140,7 @@ const stripe = order as Order & {
         </div>
         <div>
           <p class="text-xs text-muted uppercase">Data</p>
-          <p class="text-ink">{new Date(order.createdAt).toLocaleString('it-IT')}</p>
+          <p class="text-ink">{new Date(order.createdAt).toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}</p>
         </div>
         <div>
           <p class="text-xs text-muted uppercase">Riferimenti Stripe</p>

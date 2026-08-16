@@ -3,8 +3,9 @@ import { DEFAULT_VARIANT_TITLE, slugify } from '@ecom/shared/format'
 /**
  * Editor prodotto: gestisce slug automatico, righe immagini/opzioni riordinabili,
  * generazione automatica delle varianti dal prodotto cartesiano delle opzioni, e
- * il salvataggio via fetch verso l'API (il cookie di sessione viaggia con
- * `credentials: 'include'`, non serve inoltrarlo manualmente).
+ * il salvataggio via fetch verso il proxy Astro `/api/admin/products[/:id]` (stesso
+ * host dello storefront, così il cookie di sessione viaggia senza bisogno di CORS
+ * né di `credentials: 'include'` verso un host API diverso).
  */
 
 /* ------------------------------------------------------------------ */
@@ -116,8 +117,6 @@ export function initProductEditor(): void {
   const submitButton = document.getElementById('submit-button') as HTMLButtonElement
 
   const MAX_OPTIONS = 3
-  // Base URL pubblica dell'API: sostituita a build time da Vite (variabile PUBLIC_*).
-  const API_BASE = (import.meta.env.PUBLIC_API_URL ?? 'http://localhost:3001').replace(/\/$/, '')
 
   /* ------------------------- Slug automatico ------------------------- */
   let slugTouched = slugInput.value.trim() !== ''
@@ -185,7 +184,11 @@ export function initProductEditor(): void {
     regenerateVariants()
   })
 
-  optionRows.addEventListener('input', () => regenerateVariants())
+  // 'change' (fire on blur) e non 'input': rigenerare a ogni carattere digitato
+  // farebbe sì che regenerateVariants() lavori su chiavi intermedie diverse da
+  // quella finale, perdendo SKU/prezzo/stock già inseriti per la riga in modifica.
+  // Il pulsante "Rigenera combinazioni" resta disponibile per il caso manuale.
+  optionRows.addEventListener('change', () => regenerateVariants())
 
   addOptionBtn.addEventListener('click', () => {
     addOptionRow()
@@ -219,9 +222,21 @@ export function initProductEditor(): void {
     }
   }
 
-  function buildVariantRow(key: string, label: string, preserved?: ReturnType<typeof readVariantRow>): HTMLElement {
+  /** Chiave identità di una combinazione: serializzata come JSON, non come stringa
+   *  display unita da ' / '. Un valore che contenga ' / ' o l'ordine degli array
+   *  renderebbe altrimenti quella stringa ambigua o duplicata fra combinazioni
+   *  diverse, facendo atterrare SKU/prezzo/stock preservati sulla riga sbagliata. */
+  function variantKey(optionValues: string[]): string {
+    return JSON.stringify(optionValues)
+  }
+
+  function buildVariantRow(
+    optionValues: string[],
+    label: string,
+    preserved?: ReturnType<typeof readVariantRow>
+  ): HTMLElement {
     const row = cloneTemplate('variant-row-template')
-    row.dataset.key = key
+    row.dataset.key = variantKey(optionValues)
     if (preserved?.id !== undefined) row.dataset.variantId = String(preserved.id)
     row.querySelector<HTMLElement>('[data-field="label"]')!.textContent = label
     field<HTMLInputElement>(row, 'sku').value = preserved?.sku ?? ''
@@ -245,9 +260,8 @@ export function initProductEditor(): void {
 
     variantRows.innerHTML = ''
     for (const combo of combos) {
-      const key = combo.length > 0 ? combo.join(' / ') : DEFAULT_VARIANT_TITLE
       const label = combo.length > 0 ? combo.join(' / ') : DEFAULT_VARIANT_TITLE
-      variantRows.appendChild(buildVariantRow(key, label, existing.get(key)))
+      variantRows.appendChild(buildVariantRow(combo, label, existing.get(variantKey(combo))))
     }
   }
 
@@ -255,10 +269,9 @@ export function initProductEditor(): void {
 
   // Seed iniziale delle varianti dai dati del prodotto (o dalla variante unica per un prodotto nuovo).
   for (const variant of initial.variants) {
-    const key = variant.optionValues.length > 0 ? variant.optionValues.join(' / ') : DEFAULT_VARIANT_TITLE
     const label = variant.optionValues.length > 0 ? variant.optionValues.join(' / ') : variant.title || DEFAULT_VARIANT_TITLE
     variantRows.appendChild(
-      buildVariantRow(key, label, {
+      buildVariantRow(variant.optionValues, label, {
         id: variant.id,
         sku: variant.sku,
         priceEuro: variant.priceEuro,
@@ -321,15 +334,23 @@ export function initProductEditor(): void {
       const priceCents = euroToCents(field<HTMLInputElement>(row, 'price').value)
       const compareAtRaw = field<HTMLInputElement>(row, 'compareAt').value
       const compareAtCents = compareAtRaw.trim() === '' ? null : euroToCents(compareAtRaw)
-      if (priceCents === null) priceError = true
+      // Un prezzo barrato non vuoto ma non valido non va salvato come null: si
+      // perderebbe silenziosamente il valore inserito senza avvisare l'admin.
+      if (priceCents === null || (compareAtRaw.trim() !== '' && compareAtCents === null)) priceError = true
 
-      const key = row.dataset.key ?? DEFAULT_VARIANT_TITLE
-      const optionValues = key === DEFAULT_VARIANT_TITLE ? [] : key.split(' / ')
+      let optionValues: string[] = []
+      try {
+        const parsed = JSON.parse(row.dataset.key ?? '[]') as unknown
+        if (Array.isArray(parsed)) optionValues = parsed.map(String)
+      } catch {
+        optionValues = []
+      }
+      const title = optionValues.length > 0 ? optionValues.join(' / ') : DEFAULT_VARIANT_TITLE
 
       return {
         ...(row.dataset.variantId ? { id: Number(row.dataset.variantId) } : {}),
         sku: field<HTMLInputElement>(row, 'sku').value.trim(),
-        title: key,
+        title,
         priceCents: priceCents ?? 0,
         compareAtCents,
         stock: Number(field<HTMLInputElement>(row, 'stock').value || '0'),
@@ -362,10 +383,13 @@ export function initProductEditor(): void {
     saveStatus.textContent = 'Salvataggio in corso…'
 
     try {
-      const url = mode === 'edit' ? `${API_BASE}/api/admin/products/${productId}` : `${API_BASE}/api/admin/products`
+      // Proxy Astro, non l'API direttamente: se PUBLIC_API_URL punta a un host
+      // diverso da quello dello storefront, il cookie di sessione inoltrato dal
+      // login resta legato all'host dello storefront e non verrebbe mai inviato
+      // in un fetch diretto verso l'host dell'API.
+      const url = mode === 'edit' ? `/api/admin/products/${productId}` : '/api/admin/products'
       const res = await fetch(url, {
         method: mode === 'edit' ? 'PUT' : 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(payload),
       })

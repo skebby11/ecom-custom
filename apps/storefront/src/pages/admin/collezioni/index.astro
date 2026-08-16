@@ -160,10 +160,12 @@ const isEditing = formValues.id !== ''
         <div>
           <label class="label" for="coll-description">Descrizione</label>
           <textarea class="input" id="coll-description" name="description" rows="3">{formValues.description}</textarea>
+          {fieldErrors.description && <p class="mt-1 text-sm text-red-600">{fieldErrors.description.join(' ')}</p>}
         </div>
         <div>
           <label class="label" for="coll-image">URL immagine</label>
           <input class="input" id="coll-image" name="imageUrl" value={formValues.imageUrl} placeholder="https://…" />
+          {fieldErrors.imageUrl && <p class="mt-1 text-sm text-red-600">{fieldErrors.imageUrl.join(' ')}</p>}
         </div>
         <div class="flex items-center gap-3">
           <button type="submit" class="btn-primary flex-1">{isEditing ? 'Salva modifiche' : 'Crea collezione'}</button>

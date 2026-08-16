@@ -23,11 +23,15 @@ if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData()
   if (String(form.get('intent') ?? '') === 'delete') {
     const id = Number(form.get('id'))
-    try {
-      await deleteProduct(Astro.request, id)
-      return Astro.redirect(Astro.url.pathname + Astro.url.search)
-    } catch (err) {
-      deleteError = err instanceof ApiError ? err.message : "Errore durante l'eliminazione del prodotto."
+    if (!Number.isInteger(id) || id <= 0) {
+      deleteError = 'Prodotto non valido.'
+    } else {
+      try {
+        await deleteProduct(Astro.request, id)
+        return Astro.redirect(Astro.url.pathname + Astro.url.search)
+      } catch (err) {
+        deleteError = err instanceof ApiError ? err.message : "Errore durante l'eliminazione del prodotto."
+      }
     }
   }
 }

@@ -17,10 +17,15 @@ const statusLabels: Record<ProductStatus, string> = {
   archived: 'Archiviato',
 }
 
-/** Mappa id → testo del valore opzione, per ricostruire le combinazioni delle varianti. */
-const optionValueLabels = new Map<number, string>()
+/** Mappa id → { valore, posizione dell'opzione di appartenenza }, per ricostruire
+ *  le combinazioni delle varianti nello stesso ordine delle opzioni del prodotto
+ *  (l'ordine di `optionValueIds` su una variante non è garantito coincidere con
+ *  quello di `product.options`). */
+const optionValueMeta = new Map<number, { value: string; position: number }>()
 for (const option of product?.options ?? []) {
-  for (const value of option.values) optionValueLabels.set(value.id, value.value)
+  for (const value of option.values) {
+    optionValueMeta.set(value.id, { value: value.value, position: option.position })
+  }
 }
 
 const initialData = {
@@ -38,7 +43,14 @@ const initialData = {
           priceEuro: centsToEuroInput(v.priceCents),
           compareAtEuro: centsToEuroInput(v.compareAtCents),
           stock: v.stock,
-          optionValues: v.optionValueIds.map((id) => optionValueLabels.get(id) ?? '').filter(Boolean),
+          // Non `.filter(Boolean)` su id non risolti: scartarli in silenzio
+          // sfaserebbe la lunghezza dell'array rispetto al numero di opzioni del
+          // prodotto, e la combinazione non combacerebbe più con quelle generate
+          // lato client, perdendo SKU/prezzo/stock già salvati per la variante.
+          optionValues: [...v.optionValueIds]
+            .map((id) => optionValueMeta.get(id))
+            .sort((a, b) => (a?.position ?? 0) - (b?.position ?? 0))
+            .map((meta) => meta?.value ?? ''),
         }))
       : [
           {

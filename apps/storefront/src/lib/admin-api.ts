@@ -12,11 +12,23 @@ import type {
   ProductDetail,
   ProductStatus,
 } from '@ecom/shared'
+import { orderStatuses } from '@ecom/shared/format'
 import { API_URL, ApiError } from './api'
 
 /* `AdminProductRow`, `AdminStats`, `LowStockVariant` e `AdminCollectionInput`
    vivono in `@ecom/shared`: sono lo stesso contratto che l'API serializza. */
 export type { AdminProductRow, AdminStats, LowStockVariant }
+
+/**
+ * Valida un valore non fidato (querystring o form) contro `orderStatuses`
+ * invece di un semplice cast TypeScript, che non ha alcun effetto a runtime e
+ * lascerebbe passare qualunque stringa fino all'API admin.
+ */
+export function parseOrderStatus(value: unknown): OrderStatus | null {
+  return typeof value === 'string' && (orderStatuses as readonly string[]).includes(value)
+    ? (value as OrderStatus)
+    : null
+}
 
 export interface AdminUser {
   id: number
@@ -54,10 +66,28 @@ function buildUrl(path: string, query?: Query): URL {
   return url
 }
 
+/** Timeout fisso per le chiamate verso l'API: gira in SSR, non deve restare
+ *  appesa se l'API non risponde più. */
+const API_TIMEOUT_MS = 10_000
+
 /** Esegue la richiesta verso l'API e restituisce la `Response` grezza (non parsata). */
 async function rawFetch(url: URL, init: RequestInit): Promise<Response> {
   try {
-    return await fetch(url, init)
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(API_TIMEOUT_MS) })
+  } catch (cause) {
+    throw new ApiError(503, 'API_UNREACHABLE', `API non raggiungibile su ${API_URL}`, cause)
+  }
+}
+
+/**
+ * Legge il body testuale di una risposta di `rawFetch`, mappando allo stesso
+ * errore 503 anche un timeout che scatta dopo che gli header sono arrivati: la
+ * `Response` è già risolta a quel punto, ma la lettura del body può ancora
+ * abortire per lo stesso `AbortSignal` passato a `fetch`.
+ */
+async function readResponseText(res: Response): Promise<string> {
+  try {
+    return await res.text()
   } catch (cause) {
     throw new ApiError(503, 'API_UNREACHABLE', `API non raggiungibile su ${API_URL}`, cause)
   }
@@ -90,8 +120,21 @@ export async function adminFetch<T>(path: string, options: AdminFetchOptions): P
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 
-  const text = await res.text()
-  const parsed = text ? (JSON.parse(text) as unknown) : null
+  const text = await readResponseText(res)
+  let parsed: unknown = null
+  if (text) {
+    try {
+      parsed = JSON.parse(text) as unknown
+    } catch {
+      // Un reverse proxy/gateway può restituire HTML su 502/504: su una risposta
+      // 2xx non deserializzabile non c'è un payload valido da restituire al
+      // chiamante, quindi diventa un errore esplicito invece di un SyntaxError
+      // che scapperebbe dal contratto ApiError.
+      if (res.ok) {
+        throw new ApiError(502, 'INVALID_JSON', 'Risposta API non valida (JSON atteso).')
+      }
+    }
+  }
 
   if (!res.ok) {
     const err = (parsed as { error?: { code?: string; message?: string; details?: unknown } })
@@ -151,10 +194,17 @@ export async function adminLogin(
 
   if (res.ok) return { ok: true, setCookies: extractSetCookies(res) }
 
-  const text = await res.text()
-  const body = text
-    ? (JSON.parse(text) as { error?: { message?: string; details?: unknown } })
-    : null
+  const text = await readResponseText(res)
+  let body: { error?: { message?: string; details?: unknown } } | null = null
+  if (text) {
+    try {
+      body = JSON.parse(text) as { error?: { message?: string; details?: unknown } }
+    } catch {
+      // Corpo non JSON su una risposta di errore (es. HTML da un reverse proxy):
+      // resta il messaggio di fallback qui sotto, non c'è altro da leggere.
+      body = null
+    }
+  }
   return {
     ok: false,
     message: body?.error?.message ?? 'Credenziali non valide.',
@@ -170,6 +220,19 @@ export async function adminLogout(request: Request): Promise<string[]> {
     headers: { Accept: 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
   })
   return extractSetCookies(res)
+}
+
+/** Deve combaciare con `SESSION_COOKIE_NAME` in `apps/api/src/auth.ts`. */
+const SESSION_COOKIE_NAME = 'admin_session'
+
+/**
+ * Cookie di sessione già scaduto, da usare quando `adminLogout` lancia (API
+ * irraggiungibile): senza un Set-Cookie di fallback il browser terrebbe il
+ * cookie di sessione originale e l'admin risulterebbe ancora autenticato pur
+ * avendo premuto "Esci".
+ */
+export function expiredSessionCookie(): string {
+  return `${SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`
 }
 
 /* ------------------------------------------------------------------ */
