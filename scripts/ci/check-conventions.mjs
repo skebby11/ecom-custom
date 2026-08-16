@@ -168,7 +168,11 @@ function checkApiDocsUpdated() {
 
   let changed
   try {
-    changed = execFileSync('git', ['diff', '--name-only', baseSha, headSha], {
+    // Range a tre punti: confronta l'head della PR con il merge-base rispetto
+    // a baseSha, non con baseSha stesso. Con un diff a due punti i commit
+    // atterrati su main dopo il punto di partenza del branch comparirebbero
+    // come "cambiati dalla PR", segnalando rotte toccate da altri.
+    changed = execFileSync('git', ['diff', '--name-only', `${baseSha}...${headSha}`], {
       cwd: ROOT,
       encoding: 'utf8',
     })
@@ -180,7 +184,7 @@ function checkApiDocsUpdated() {
       rule: 'docs/API.md è la specifica delle rotte: va aggiornata nello stesso commit che cambia una rotta (CLAUDE.md § Regole non negoziabili)',
       file: 'docs/API.md',
       line: null,
-      detail: `"git diff ${baseSha} ${headSha}" è fallito, il controllo su docs/API.md non può girare: ${err.message} (verifica fetch-depth in ci.yml).`,
+      detail: `"git diff ${baseSha}...${headSha}" è fallito, il controllo su docs/API.md non può girare: ${err.message} (verifica fetch-depth in ci.yml).`,
     })
     return
   }
