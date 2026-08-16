@@ -17,6 +17,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# GITHUB_TOKEN in sola lettura: nessun job qui pusha commit, crea release o
+# scrive su GitHub, quindi non serve altro.
+permissions:
+  contents: read
+
 jobs:
   static:
     name: Typecheck e build
@@ -25,6 +30,10 @@ jobs:
     steps:
       - name: Checkout codice
         uses: actions/checkout@v4
+        with:
+          # Il job non fa mai un push: non serve che il token resti
+          # nella config git locale dopo il checkout (artipacked).
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -58,9 +67,26 @@ jobs:
         # legittimamente contenere riferimenti locali (fallback lato server
         # usati solo in sviluppo) e non va incluso in questo grep.
         run: |
-          if grep -rniE "localhost|127\.0\.0\.1" apps/storefront/dist/client; then
+          bundle_dir="apps/storefront/dist/client"
+          if [ ! -d "$bundle_dir" ]; then
+            echo "::error::Bundle client non trovato: $bundle_dir (la build non ha prodotto l'output atteso)."
+            exit 1
+          fi
+
+          # Non uso "if grep ...": grep esce con status 2 (non 0/1) se la
+          # directory non è leggibile, e un `if` tratterebbe quel caso come
+          # "nessun match", facendo passare una scansione fallita come pulita.
+          set +e
+          grep -rniE "localhost|127\.0\.0\.1" "$bundle_dir"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
             echo "::error::Trovato un riferimento a localhost/127.0.0.1 nel bundle client dello storefront (sopra). PUBLIC_SITE_URL o PUBLIC_API_URL non sono stati impostati a un'origine pubblica in fase di build: un valore di sviluppo rischia di finire in produzione."
             exit 1
+          fi
+          if [ "$status" -ne 1 ]; then
+            echo "::error::Impossibile analizzare il bundle client dello storefront (grep uscito con status $status)."
+            exit "$status"
           fi
           echo "Bundle client pulito: nessun riferimento a localhost/127.0.0.1 in apps/storefront/dist/client."
 
@@ -71,6 +97,8 @@ jobs:
     steps:
       - name: Checkout codice
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -130,6 +158,7 @@ jobs:
           # della PR (vedi scripts/ci/check-conventions.mjs). Repo piccolo:
           # il costo di un fetch-depth 0 è trascurabile.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4

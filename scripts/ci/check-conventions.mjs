@@ -105,7 +105,10 @@ function importedFromShared(fileContent) {
   let m
   while ((m = re.exec(fileContent))) {
     for (const part of m[1].split(',')) {
-      const name = part.trim().split(/\s+as\s+/)[0].trim()
+      // Con "import { x as y }" nel codice si usa il nome locale "y": è quello
+      // che va cercato in checkDuplicateContracts, non l'export originale "x".
+      const [importedName, localName] = part.trim().split(/\s+as\s+/)
+      const name = (localName ?? importedName).trim()
       if (name) names.add(name)
     }
   }
@@ -150,9 +153,16 @@ function checkApiDocsUpdated() {
   const baseSha = process.env.PR_BASE_SHA
   const headSha = process.env.PR_HEAD_SHA
   if (!baseSha || !headSha) {
-    console.warn(
-      '[check-conventions] PR_BASE_SHA/PR_HEAD_SHA non impostate: salto il controllo su docs/API.md (serve fetch-depth adeguato in checkout).'
-    )
+    // Un evento pull_request senza queste due env var è una CI mal
+    // configurata (ci.yml non le passa più, o è girato fuori da GitHub
+    // Actions), non un caso normale da saltare in silenzio: uno script di
+    // controllo che sbaglia per difetto è peggio di nessun controllo.
+    violations.push({
+      rule: 'docs/API.md è la specifica delle rotte: va aggiornata nello stesso commit che cambia una rotta (CLAUDE.md § Regole non negoziabili)',
+      file: 'docs/API.md',
+      line: null,
+      detail: 'PR_BASE_SHA/PR_HEAD_SHA non impostate: il controllo su docs/API.md non può girare (verifica il passaggio di queste env var e fetch-depth in ci.yml).',
+    })
     return
   }
 
@@ -166,7 +176,12 @@ function checkApiDocsUpdated() {
       .map((s) => s.trim())
       .filter(Boolean)
   } catch (err) {
-    console.warn(`[check-conventions] git diff fallito, salto il controllo su docs/API.md: ${err.message}`)
+    violations.push({
+      rule: 'docs/API.md è la specifica delle rotte: va aggiornata nello stesso commit che cambia una rotta (CLAUDE.md § Regole non negoziabili)',
+      file: 'docs/API.md',
+      line: null,
+      detail: `"git diff ${baseSha} ${headSha}" è fallito, il controllo su docs/API.md non può girare: ${err.message} (verifica fetch-depth in ci.yml).`,
+    })
     return
   }
 
