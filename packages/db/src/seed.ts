@@ -185,7 +185,21 @@ function runSeed(): SeedSummary {
       })
 
       // varianti + collegamento ai valori opzione selezionati
+      //
+      // Ogni incoerenza nei dati di seed fa fallire la transazione invece di
+      // essere saltata: una variante senza le sue righe in
+      // `variant_option_values` viene comunque scritta, ma il selettore della
+      // scheda prodotto non riesce ad abbinarla a nessuna combinazione e
+      // diventa inacquistabile. Nessun vincolo del database intercetta il caso,
+      // quindi un refuso in `seed-data.ts` resterebbe invisibile.
       p.variants.forEach((v, variantIdx) => {
+        if (v.selection.length !== p.options.length) {
+          throw new Error(
+            `Seed incoerente: la variante "${v.sku}" di "${p.slug}" indica ${v.selection.length} ` +
+              `valori, ma il prodotto dichiara ${p.options.length} assi.`
+          )
+        }
+
         const variantResult = tx
           .insert(variants)
           .values({
@@ -203,18 +217,34 @@ function runSeed(): SeedSummary {
 
         v.selection.forEach((value, axisIdx) => {
           const option = p.options[axisIdx]
-          if (!option) return
+          if (!option) {
+            throw new Error(
+              `Seed incoerente: la variante "${v.sku}" di "${p.slug}" indica un valore per l'asse ` +
+                `in posizione ${axisIdx}, che il prodotto non dichiara.`
+            )
+          }
           const valueId = valueIdByOptionAndValue.get(option.name)?.get(value)
           const optionId = optionIdByName.get(option.name)
-          if (valueId === undefined || optionId === undefined) return
+          if (valueId === undefined || optionId === undefined) {
+            throw new Error(
+              `Seed incoerente: "${value}" non è fra i valori dell'asse "${option.name}" di ` +
+                `"${p.slug}" (variante "${v.sku}").`
+            )
+          }
           tx.insert(variantOptionValues).values({ variantId, optionValueId: valueId, optionId }).run()
         })
       })
 
-      // collezioni collegate
+      // collezioni collegate — stesso principio: uno slug che non esiste è un
+      // refuso, non un collegamento da ignorare
       for (const collectionSlug of p.collectionSlugs) {
         const collectionId = collectionIdBySlug.get(collectionSlug)
-        if (collectionId === undefined) continue
+        if (collectionId === undefined) {
+          throw new Error(
+            `Seed incoerente: il prodotto "${p.slug}" fa riferimento alla collezione ` +
+              `"${collectionSlug}", che non esiste.`
+          )
+        }
         tx.insert(productCollections).values({ productId, collectionId }).run()
       }
     }
@@ -236,7 +266,15 @@ function runSeed(): SeedSummary {
   })
 }
 
-const summary = runSeed()
+let summary: SeedSummary
+try {
+  summary = runSeed()
+} catch (error) {
+  // la transazione è già stata annullata: il catalogo precedente resta intatto
+  console.error(`\n✗ Seed interrotto: ${error instanceof Error ? error.message : String(error)}`)
+  console.error('  Nessuna modifica è stata scritta. Correggi packages/db/src/seed-data.ts.\n')
+  process.exit(1)
+}
 
 console.log('')
 if (cartLinesAtRisk > 0) {
