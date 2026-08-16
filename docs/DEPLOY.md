@@ -32,6 +32,11 @@ SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString
 
 - `PUBLIC_SITE_URL` deve essere l'URL pubblico reale: Stripe lo usa per `success_url` /
   `cancel_url` dopo il checkout.
+- `PUBLIC_API_URL` è una variabile Astro/Vite: `docker compose build` la inietta come
+  build arg nell'immagine storefront (vedi `docker-compose.yml`) perché il bundle
+  browser la inglobba in fase di build, non a runtime. Se la cambi dopo un primo
+  deploy, `docker compose up -d` da solo non basta: serve un rebuild
+  (`docker compose build storefront && docker compose up -d storefront`).
 - `SESSION_SECRET` va generato una volta e mai più rigenerato (rigenerarlo invalida tutte
   le sessioni admin attive) — il comando sopra ne stampa uno a 64 caratteri esadecimali.
 - Le chiavi Stripe (`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`)
@@ -109,6 +114,9 @@ SQLite vive in un unico file: backuparlo è semplice, ma va fatto in modo consis
 (non copiare il file `.db` a caldo senza precauzioni, per via del WAL).
 
 **Opzione A — `sqlite3 .backup` (consigliata, atomica)**
+
+L'immagine `api` include la CLI `sqlite3` (pacchetto Alpine `sqlite`) proprio per
+questo comando.
 
 ```bash
 docker compose exec api sh -c \

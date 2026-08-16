@@ -11,7 +11,7 @@ services:
       - db-data:/app/data
     # Applica le migrazioni ad ogni avvio, poi lancia l'API. Idempotente:
     # drizzle-kit salta le migrazioni già applicate.
-    command: sh -c "npm run db:migrate -w @ecom/db && npm run start -w @ecom/api"
+    command: sh -c "npm run migrate -w @ecom/db && npm run start -w @ecom/api"
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/api/health']
       interval: 10s
@@ -24,6 +24,11 @@ services:
     build:
       context: .
       dockerfile: docker/storefront.Dockerfile
+      # PUBLIC_API_URL va inglobata nel bundle browser durante la build (vedi
+      # docker/storefront.Dockerfile): letta da .env solo per la build, non a
+      # runtime. Cambiarla richiede un rebuild dell'immagine (non basta `up -d`).
+      args:
+        PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3001}
     env_file: .env
     environment:
       # Rete interna Docker: il server Astro (SSR) chiama l'API tramite il

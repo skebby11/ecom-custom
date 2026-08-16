@@ -19,6 +19,11 @@ RUN npm ci
 # --------------------------------------------------------------- build -----
 FROM deps AS build
 WORKDIR /app
+# PUBLIC_API_URL è una variabile Astro/Vite: viene inglobata nel bundle browser
+# in fase di build, non letta a runtime. env_file da solo non basta (vedi
+# docker-compose.yml e docs/DEPLOY.md): va passata come build arg.
+ARG PUBLIC_API_URL
+ENV PUBLIC_API_URL=$PUBLIC_API_URL
 COPY . .
 RUN npm run build -w @ecom/storefront
 

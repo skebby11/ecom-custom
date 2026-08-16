@@ -25,7 +25,9 @@ RUN npm ci
 
 # ------------------------------------------------------------- runtime -----
 FROM node:22-alpine AS runtime
-RUN addgroup -S app && adduser -S app -G app
+# sqlite (CLI sqlite3) serve per il backup atomico `.backup` documentato in
+# docs/DEPLOY.md — non è una dipendenza di better-sqlite3, va installata a parte.
+RUN apk add --no-cache sqlite && addgroup -S app && adduser -S app -G app
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -41,5 +43,5 @@ EXPOSE 3001
 
 # Le migrazioni vengono applicate dal `command` in docker-compose.yml prima
 # di questo entrypoint. Per un avvio manuale (senza compose):
-#   docker run ... api sh -c "npm run db:migrate -w @ecom/db && npm run start -w @ecom/api"
+#   docker run ... api sh -c "npm run migrate -w @ecom/db && npm run start -w @ecom/api"
 CMD ["npm", "run", "start", "-w", "@ecom/api"]
