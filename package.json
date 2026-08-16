@@ -20,8 +20,8 @@
     "start:web": "npm run start -w @ecom/storefront",
     "db:generate": "npm run generate -w @ecom/db",
     "db:migrate": "npm run migrate -w @ecom/db",
-    "db:seed": "npm run seed -w @ecom/db",
-    "db:reset": "npm run reset -w @ecom/db",
+    "db:seed": "npm run seed -w @ecom/db --",
+    "db:reset": "npm run reset -w @ecom/db --",
     "setup": "npm install && npm run db:migrate && npm run db:seed",
     "typecheck": "tsc -b --pretty"
   },

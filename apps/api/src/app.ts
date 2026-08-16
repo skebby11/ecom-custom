@@ -18,11 +18,50 @@ import ordersRoutes from './routes/orders.js'
 import productsRoutes from './routes/products.js'
 import webhooksRoutes from './routes/webhooks.js'
 
+/**
+ * Sostituisce il valore dei parametri indicati con un segnaposto, lasciando
+ * intatto il resto dell'URL: nei log serve sapere quale rotta è stata chiamata,
+ * non il segreto che la autorizzava.
+ */
+function redactQueryParams(url: string, params: string[]): string {
+  const queryStart = url.indexOf('?')
+  if (queryStart === -1) return url
+
+  const path = url.slice(0, queryStart)
+  const search = new URLSearchParams(url.slice(queryStart + 1))
+  let touched = false
+  for (const param of params) {
+    if (search.has(param)) {
+      search.set(param, '[redatto]')
+      touched = true
+    }
+  }
+  if (!touched) return url
+  return `${path}?${search.toString()}`
+}
+
 export function buildApp() {
   const fastify = Fastify({
     logger: {
       level: env.NODE_ENV === 'production' ? 'info' : 'debug',
       transport: env.NODE_ENV === 'production' ? undefined : { target: 'pino-pretty' },
+      // `GET /api/orders/:id?token=…` autorizza la consultazione dell'ordine
+      // senza login: se l'URL finisse nei log, chi li legge potrebbe aprire
+      // l'ordine di qualunque cliente. Stesso motivo per il cookie di sessione.
+      serializers: {
+        req(request) {
+          return {
+            method: request.method,
+            url: redactQueryParams(request.url, ['token']),
+            host: request.host,
+            remoteAddress: request.ip,
+          }
+        },
+      },
+      redact: {
+        paths: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'],
+        censor: '[redatto]',
+      },
     },
   })
 

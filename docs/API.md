@@ -13,8 +13,22 @@ Ogni errore risponde con questo corpo (`apiErrorSchema`):
 { "error": { "code": "NOT_FOUND", "message": "Prodotto non trovato", "details": null } }
 ```
 
-Codici usati: `VALIDATION_ERROR` (400), `UNAUTHORIZED` (401), `NOT_FOUND` (404),
-`OUT_OF_STOCK` (409), `CART_EMPTY` (409), `INTERNAL_ERROR` (500).
+Elenco completo dei codici. Qualunque nuovo codice va aggiunto qui nello stesso commit
+che lo introduce.
+
+| Codice | Stato | Quando |
+| --- | --- | --- |
+| `VALIDATION_ERROR` | 400 | payload che non supera lo schema Zod; `details` contiene `zodError.flatten()` |
+| `FST_ERR_CTP_INVALID_JSON_BODY` | 400 | JSON malformato nel body della richiesta |
+| `UNAUTHORIZED` | 401 | sessione admin assente o scaduta |
+| `NOT_FOUND` | 404 | risorsa inesistente, id malformato, oppure token ordine errato |
+| `OUT_OF_STOCK` | 409 | quantità richiesta superiore alla disponibilità della variante |
+| `CART_EMPTY` | 409 | checkout su un carrello senza righe |
+| `DUPLICATE` | 409 | violazione di unicità; `details.field` indica il campo (`slug`, `sku`, `email`) |
+| `FST_ERR_CTP_BODY_TOO_LARGE` | 413 | body della richiesta oltre il limite configurato |
+| `FST_ERR_CTP_INVALID_MEDIA_TYPE` | 415 | `Content-Type` non supportato dai parser registrati |
+| `STRIPE_NOT_CONFIGURED` | 503 | `STRIPE_SECRET_KEY` mancante o ancora al valore segnaposto |
+| `INTERNAL_ERROR` | 500 | qualsiasi altro errore; il dettaglio resta nei log del server |
 
 ---
 
@@ -57,6 +71,21 @@ allo stock disponibile: se eccede, l'API risponde `409 OUT_OF_STOCK`.
 `POST /api/checkout/session` crea un ordine `pending` con snapshot delle righe, poi apre
 una Stripe Checkout Session (mode `payment`) con `success_url` = `${PUBLIC_SITE_URL}/ordine/{orderId}?token={token}`
 e `cancel_url` = `${PUBLIC_SITE_URL}/carrello`.
+
+**Il token dell'ordine.** `accessToken` autorizza la consultazione di un ordine senza login,
+quindi vale quanto una credenziale. Stripe può riportare l'utente solo su un URL, perciò il
+token compare per forza una volta nella query string di `success_url`. Da lì in poi non deve
+più restare esposto:
+
+- lo storefront, al primo atterraggio, valida il token, lo sposta in un cookie `HttpOnly`
+  limitato al percorso `/ordine` e reindirizza allo stesso indirizzo senza query string;
+- la pagina risponde con `Referrer-Policy: no-referrer`, così il token non finisce
+  nell'header `Referer` verso terze parti;
+- l'API redige il parametro `token` (e i cookie) dai log delle richieste: negli accessi il
+  suo valore è sostituito dal segnaposto `[redatto]`;
+- il token non è monouso, perché la pagina di conferma continua a interrogare lo stato
+  finché il webhook non arriva. La sua durata coincide con quella dell'ordine.
+
 Il webhook `checkout.session.completed` porta l'ordine a `paid`, scala lo stock e svuota il carrello.
 Gli eventi sono resi idempotenti tramite la tabella `webhook_events`.
 Se `STRIPE_SECRET_KEY` non è configurata l'API risponde `503 STRIPE_NOT_CONFIGURED`

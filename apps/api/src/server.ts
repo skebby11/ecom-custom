@@ -1,5 +1,14 @@
 import { buildApp } from './app.js'
-import { env } from './env.js'
+import { assertProductionEnv, env } from './env.js'
+
+// prima di aprire la porta: fuori dallo sviluppo un deploy incompleto deve
+// fallire subito e in modo leggibile, non al primo pagamento
+try {
+  assertProductionEnv()
+} catch (error) {
+  console.error(`✗ ${error instanceof Error ? error.message : String(error)}`)
+  process.exit(1)
+}
 
 const app = buildApp()
 

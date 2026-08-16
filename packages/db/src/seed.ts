@@ -49,6 +49,19 @@ function buildVariantTitle(selection: string[]): string {
 const WEAK_PASSWORDS = new Set(['changeme123', 'password', 'admin1234', '12345678'])
 
 /**
+ * Ambiente corrente, con default fail-closed: `NODE_ENV` non impostata è la
+ * norma su una macchina di produzione, quindi trattarla come sviluppo
+ * disattiverebbe ogni guardia proprio dove serve. Unico punto di verità: due
+ * guardie con default diversi lascerebbero passare esattamente il caso che
+ * entrambe vogliono bloccare.
+ */
+function currentEnv(): string {
+  return process.env.NODE_ENV ?? 'production'
+}
+
+const isDevelopment = (): boolean => currentEnv() === 'development'
+
+/**
  * Le credenziali admin arrivano solo dall'ambiente, senza valori di ripiego:
  * un default nel codice significa che un'installazione lasciata a metà espone
  * un account amministratore dalle credenziali note.
@@ -63,9 +76,14 @@ function readAdminCredentials(): { email: string; password: string } {
   if (!password) problems.push('ADMIN_PASSWORD non è impostata')
   else if (password.length < 8) problems.push('ADMIN_PASSWORD deve essere di almeno 8 caratteri')
 
-  // in sviluppo la password di esempio va bene; altrove è un account regalato
-  if (process.env.NODE_ENV === 'production' && WEAK_PASSWORDS.has(password)) {
-    problems.push('ADMIN_PASSWORD è una password di esempio: cambiala prima di seedare in produzione')
+  // solo in sviluppo una password di esempio è accettabile; ovunque altro
+  // (produzione, staging, preview, o NODE_ENV non impostata) è un account
+  // regalato a chiunque conosca il progetto
+  if (!isDevelopment() && WEAK_PASSWORDS.has(password)) {
+    problems.push(
+      `ADMIN_PASSWORD è una password di esempio e NODE_ENV è "${currentEnv()}": ` +
+        'scegline una vera prima di seedare fuori dallo sviluppo'
+    )
   }
 
   if (problems.length > 0) {
@@ -84,11 +102,10 @@ function readAdminCredentials(): { email: string; password: string } {
  */
 function assertSafeToSeed(): void {
   const forced = process.argv.includes('--force')
-  const nodeEnv = process.env.NODE_ENV ?? 'production'
-  if (nodeEnv === 'development' || forced) return
+  if (isDevelopment() || forced) return
 
   console.error(
-    `✗ Rifiuto di rigenerare il catalogo con NODE_ENV="${nodeEnv}".\n` +
+    `✗ Rifiuto di rigenerare il catalogo con NODE_ENV="${currentEnv()}".\n` +
       '  Il seed cancella e ricrea tutti i prodotti: i carrelli attivi si svuotano.\n\n' +
       '  In sviluppo:  NODE_ENV=development npm run db:seed\n' +
       '  Per forzare:  npm run db:seed -- --force'
