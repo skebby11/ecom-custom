@@ -4,12 +4,44 @@ import { formatPrice } from '@ecom/shared/format'
 import { api } from '~/lib/api'
 
 const { id } = Astro.params
-const token = Astro.url.searchParams.get('token')
+if (!id) return Astro.redirect('/404')
 
-if (!id || !token) return Astro.redirect('/404')
+// Cookie dedicato a questo ordine: HttpOnly (mai leggibile da JS) e con path
+// ristretto a /ordine, così non viaggia sul resto del sito.
+const tokenCookieName = `order_token_${id}`
+const queryToken = Astro.url.searchParams.get('token')
+
+if (queryToken) {
+  // Primo atterraggio dopo Stripe: il token è ancora nella query string.
+  // Lo validiamo, lo spostiamo in un cookie HttpOnly e ripuliamo l'URL.
+  // Se restasse nell'URL, sopravviverebbe nella cronologia del browser, nel
+  // Referer inviato a terze parti e nei log di qualunque proxy davanti al
+  // sito, esponendo indirizzo, email e righe d'ordine a chiunque lo veda.
+  const validated = await api.order(id, queryToken)
+  if (!validated) return Astro.redirect('/404')
+
+  Astro.cookies.set(tokenCookieName, queryToken, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/ordine',
+    secure: import.meta.env.PROD,
+    maxAge: 60 * 60 * 24 * 30, // 30 giorni
+  })
+
+  return Astro.redirect(Astro.url.pathname)
+}
+
+// Visite successive: nessun token in query string, si legge dal cookie.
+const token = Astro.cookies.get(tokenCookieName)?.value
+if (!token) return Astro.redirect('/404')
 
 const order = await api.order(id, token)
 if (!order) return Astro.redirect('/404')
+
+// Non propagare mai il referrer da questa pagina: l'URL non contiene più il
+// token, ma il numero ordine nel path è comunque dato che non deve finire nei
+// log/analytics di siti terzi linkati da qui (es. link "Continua lo shopping").
+Astro.response.headers.set('Referrer-Policy', 'no-referrer')
 
 const statusLabels: Record<string, string> = {
   pending: 'Pagamento in elaborazione',
@@ -96,18 +128,18 @@ const isPending = order.status === 'pending'
   </div>
 
   {isPending && (
-    <script define:vars={{ orderId: id, token }}>
+    <script define:vars={{ orderId: id }}>
       // Il webhook Stripe può arrivare con qualche secondo di ritardo: ricontrolliamo
       // lo stato dell'ordine ogni 3s (max 10 tentativi) e ricarichiamo quando cambia.
-      // Il polling passa dal proxy same-origin /api/orders/:id, così l'access token
-      // dell'ordine non lascia mai il primo-party e non serve conoscere l'URL dell'API.
+      // Il token non arriva mai qui: si chiama un proxy dello storefront che lo
+      // legge dal cookie HttpOnly lato server (credentials: 'same-origin').
       let attempts = 0
       const maxAttempts = 10
 
       const timer = setInterval(async () => {
         attempts += 1
         try {
-          const res = await fetch(`/api/orders/${orderId}?token=${encodeURIComponent(token)}`)
+          const res = await fetch(`/ordine/${orderId}/stato.json`, { credentials: 'same-origin' })
           if (res.ok) {
             const data = await res.json()
             if (data.status !== 'pending') {

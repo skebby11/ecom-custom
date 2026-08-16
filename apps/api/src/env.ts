@@ -26,22 +26,34 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
   API_HOST: z.string().min(1).default('0.0.0.0'),
   PUBLIC_SITE_URL: z.string().min(1).default('http://localhost:4321'),
-  SESSION_SECRET: z.string().min(1).default('dev-secret-change-me'),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 })
 
-const parsedEnv = envSchema.parse(process.env)
+export const env = envSchema.parse(process.env)
 
-// il valore di default esiste solo per lo sviluppo locale: partire in produzione
-// con un segreto di sessione noto pubblicamente (questo repository) equivale a non
-// averne uno, quindi va rifiutato esplicitamente
-if (parsedEnv.NODE_ENV === 'production' && parsedEnv.SESSION_SECRET === 'dev-secret-change-me') {
-  throw new Error('SESSION_SECRET deve essere impostato in produzione (valore di default non consentito)')
+/**
+ * Fuori dallo sviluppo, restare sui default di `.env.example` è quasi sempre un
+ * deploy incompleto: `PUBLIC_SITE_URL` sbagliata rompe i redirect di Stripe e i
+ * controlli di origine dello storefront. Meglio non partire affatto che partire
+ * in uno stato che fallisce solo al primo pagamento.
+ */
+export function assertProductionEnv(): void {
+  if ((process.env.NODE_ENV ?? 'production') === 'development') return
+
+  const problems: string[] = []
+  if (env.PUBLIC_SITE_URL.includes('localhost') || env.PUBLIC_SITE_URL.includes('127.0.0.1')) {
+    problems.push(`PUBLIC_SITE_URL punta ancora a ${env.PUBLIC_SITE_URL}`)
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `Configurazione non valida per NODE_ENV="${process.env.NODE_ENV ?? 'production'}":\n` +
+        problems.map((p) => `  - ${p}`).join('\n')
+    )
+  }
 }
-
-export const env = parsedEnv
 
 /** Placeholder presente in `.env.example`: equivale a "non configurato". */
 export const STRIPE_PLACEHOLDER_KEY = 'sk_test_xxx'

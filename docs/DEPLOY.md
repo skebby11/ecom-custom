@@ -27,18 +27,17 @@ Oltre a quelle già in `.env.example`, in produzione imposta:
 NODE_ENV=production
 PUBLIC_SITE_URL=https://tuodominio.it
 PUBLIC_API_URL=https://tuodominio.it/api
-SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 ```
 
 - `PUBLIC_SITE_URL` deve essere l'URL pubblico reale: Stripe lo usa per `success_url` /
-  `cancel_url` dopo il checkout.
+  `cancel_url` dopo il checkout, e da esso deriva anche `security.allowedDomains` di Astro.
+  Con `NODE_ENV` diverso da `development` l'API si rifiuta di partire se punta ancora a
+  `localhost`: meglio un errore all'avvio che un deploy che fallisce al primo pagamento.
 - `PUBLIC_API_URL` è una variabile Astro/Vite: `docker compose build` la inietta come
   build arg nell'immagine storefront (vedi `docker-compose.yml`) perché il bundle
   browser la inglobba in fase di build, non a runtime. Se la cambi dopo un primo
   deploy, `docker compose up -d` da solo non basta: serve un rebuild
   (`docker compose build storefront && docker compose up -d storefront`).
-- `SESSION_SECRET` va generato una volta e mai più rigenerato (rigenerarlo invalida tutte
-  le sessioni admin attive) — il comando sopra ne stampa uno a 64 caratteri esadecimali.
 - Le chiavi Stripe (`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`)
   vanno sostituite con quelle **live**, non le `sk_test_...` / `pk_test_...` di sviluppo.
 
@@ -139,9 +138,9 @@ Programma l'opzione A in un cron giornaliero e conserva le copie fuori dal VPS
 ## Checklist pre-lancio
 
 - [ ] `.env` di produzione compilato (nessun valore di esempio rimasto, es. `sk_test_xxx`)
-- [ ] `SESSION_SECRET` generato ex novo, non quello di `.env.example`
+- [ ] `ADMIN_PASSWORD` scelta a mano: il template la lascia vuota di proposito, e fuori da
+      `NODE_ENV=development` il seed rifiuta comunque le password di esempio note
 - [ ] Chiavi Stripe **live** configurate e webhook live collegato e testato con un ordine reale
-- [ ] `ADMIN_PASSWORD` cambiata rispetto al default `changeme123`
 - [ ] `npm run db:seed` **non** eseguito in produzione con i dati demo (o eseguito una sola
       volta consapevolmente, sapendo che sovrascrive il catalogo)
 - [ ] TLS attivo e redirect HTTP → HTTPS funzionante
