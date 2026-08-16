@@ -31,7 +31,12 @@ SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString
 ```
 
 - `PUBLIC_SITE_URL` deve essere l'URL pubblico reale: Stripe lo usa per `success_url` /
-  `cancel_url` dopo il checkout.
+  `cancel_url` dopo il checkout. È **obbligatoria** in produzione: `astro.config.mjs`
+  interrompe il build dell'immagine storefront se manca o non è un URL valido.
+  Come `PUBLIC_API_URL` (vedi sotto), `docker compose build` la inietta come build arg
+  (vedi `docker-compose.yml`): se la cambi dopo un primo deploy, `docker compose up -d`
+  da solo non basta, serve un rebuild
+  (`docker compose build storefront && docker compose up -d storefront`).
 - `PUBLIC_API_URL` è una variabile Astro/Vite: `docker compose build` la inietta come
   build arg nell'immagine storefront (vedi `docker-compose.yml`) perché il bundle
   browser la inglobba in fase di build, non a runtime. Se la cambi dopo un primo
