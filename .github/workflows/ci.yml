@@ -48,6 +48,21 @@ jobs:
         env:
           PUBLIC_SITE_URL: https://esempio.test
 
+      - name: Verifica che il bundle client non contenga localhost
+        # Guardia contro una regressione reale già avvenuta: PUBLIC_SITE_URL e
+        # PUBLIC_API_URL sono variabili Astro/Vite inglobate nel bundle browser
+        # a build time, e in passato un http://localhost:... è finito dentro
+        # un'immagine di produzione dello storefront. Il controllo è ristretto
+        # a dist/client (l'output servito al browser): dist/server può
+        # legittimamente contenere riferimenti locali (fallback lato server
+        # usati solo in sviluppo) e non va incluso in questo grep.
+        run: |
+          if grep -rniE "localhost|127\.0\.0\.1" apps/storefront/dist/client; then
+            echo "::error::Trovato un riferimento a localhost/127.0.0.1 nel bundle client dello storefront (sopra). PUBLIC_SITE_URL o PUBLIC_API_URL non sono stati impostati a un'origine pubblica in fase di build: un valore di sviluppo rischia di finire in produzione."
+            exit 1
+          fi
+          echo "Bundle client pulito: nessun riferimento a localhost/127.0.0.1 in apps/storefront/dist/client."
+
   database:
     name: Migrazione e seed database
     runs-on: ubuntu-latest
