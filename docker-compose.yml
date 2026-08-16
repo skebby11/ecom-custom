@@ -1,0 +1,46 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    env_file: .env
+    ports:
+      - '3001:3001'
+    volumes:
+      # Volume nominato per data/: il DB SQLite sopravvive a restart e rebuild.
+      - db-data:/app/data
+    # Applica le migrazioni ad ogni avvio, poi lancia l'API. Idempotente:
+    # drizzle-kit salta le migrazioni già applicate.
+    command: sh -c "npm run migrate -w @ecom/db && npm run start -w @ecom/api"
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/api/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  storefront:
+    build:
+      context: .
+      dockerfile: docker/storefront.Dockerfile
+      # PUBLIC_API_URL va inglobata nel bundle browser durante la build (vedi
+      # docker/storefront.Dockerfile): letta da .env solo per la build, non a
+      # runtime. Cambiarla richiede un rebuild dell'immagine (non basta `up -d`).
+      args:
+        PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3001}
+    env_file: .env
+    environment:
+      # Rete interna Docker: il server Astro (SSR) chiama l'API tramite il
+      # nome del servizio, non tramite l'URL pubblico.
+      API_URL: http://api:3001
+      PORT: '4321'
+    ports:
+      - '4321:4321'
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db-data:
