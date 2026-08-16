@@ -11,6 +11,7 @@ import {
   variants,
 } from '@ecom/db'
 import type {
+  AdminCollectionInput,
   AdminProductInput,
   AdminProductRow,
   Collection,
@@ -620,13 +621,11 @@ export async function adminDeleteProduct(id: number): Promise<void> {
 /* Admin — collezioni                                                  */
 /* ------------------------------------------------------------------ */
 
-export type CollectionInput = { slug: string; title: string; description?: string | null; imageUrl?: string | null }
-
 export async function adminListCollections(): Promise<Collection[]> {
   return listCollections()
 }
 
-export async function adminCreateCollection(input: CollectionInput): Promise<Collection> {
+export async function adminCreateCollection(input: AdminCollectionInput): Promise<Collection> {
   const db = getDb()
   const [row] = await db
     .insert(collections)
@@ -640,7 +639,7 @@ export async function adminCreateCollection(input: CollectionInput): Promise<Col
   return { id: row!.id, slug: row!.slug, title: row!.title, description: row!.description, imageUrl: row!.imageUrl, productCount: 0 }
 }
 
-export async function adminUpdateCollection(id: number, input: CollectionInput): Promise<Collection> {
+export async function adminUpdateCollection(id: number, input: AdminCollectionInput): Promise<Collection> {
   const db = getDb()
   const [existing] = await db.select().from(collections).where(eq(collections.id, id)).limit(1)
   if (!existing) throw notFound('Collezione non trovata')

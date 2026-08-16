@@ -94,10 +94,10 @@ function checkMoneyFloats() {
 /* ------------------------------------------------------------------ */
 /* 2. Niente contratti Zod duplicati fuori da packages/shared           */
 /* ------------------------------------------------------------------ */
-// Debito noto, individuato scrivendo questo stesso controllo: rotta e schema
-// da correggere in un intervento a parte (fuori scope per la PR CI), non
-// silenziato senza motivo. Rimuovere la riga qui sotto quando è risolto.
-const KNOWN_EXCEPTIONS = new Set(['apps/api/src/routes/admin/collections.ts:collectionInputSchema'])
+// Valvola di sfogo per debiti noti, nella forma `percorso/file.ts:nomeSchema`.
+// Va usata solo per rimandare un fix già pianificato, mai per silenziare una
+// violazione nuova: oggi è vuota e la regola vale senza eccezioni.
+const KNOWN_EXCEPTIONS = new Set([])
 
 function importedFromShared(fileContent) {
   const names = new Set()

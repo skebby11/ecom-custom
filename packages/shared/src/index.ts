@@ -248,9 +248,17 @@ export const adminCollectionInputSchema = z.object({
     .string()
     .min(1)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug non valido (usa lettere minuscole e trattini)'),
-  title: z.string().min(1),
-  description: z.string().nullable().optional(),
-  imageUrl: z.string().nullable().optional(),
+  title: z.string().min(1).max(200),
+  description: z.string().max(5000).nullable().optional(),
+  // richiede un URL http/https assoluto: la vetrina pubblica renderizza questo
+  // valore direttamente, uno schema diverso (es. `javascript:`) sarebbe pericoloso.
+  // `.url()` da solo non basta: accetta qualsiasi schema parsabile da `new URL()`
+  imageUrl: z
+    .string()
+    .url()
+    .refine((v) => v.startsWith('http://') || v.startsWith('https://'), 'usa un URL http o https')
+    .nullable()
+    .optional(),
 })
 export type AdminCollectionInput = z.infer<typeof adminCollectionInputSchema>
 
