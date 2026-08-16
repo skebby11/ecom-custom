@@ -13,6 +13,25 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 /** monorepo root: packages/db/.. /.. */
 const repoRoot = resolve(packageRoot, '..', '..')
 
+/**
+ * Gli script `db:*` girano fuori dal processo API, che carica `.env` per conto
+ * suo: senza questo, `DATABASE_URL` e le credenziali admin verrebbero ignorate
+ * e il seed lavorerebbe su un database diverso da quello dell'applicazione.
+ * `loadEnvFile` non sovrascrive le variabili già presenti nell'ambiente.
+ */
+function loadRootEnv(): void {
+  const envPath = resolve(repoRoot, '.env')
+  if (!existsSync(envPath)) return
+  if (typeof process.loadEnvFile !== 'function') return // Node < 20.6
+  try {
+    process.loadEnvFile(envPath)
+  } catch {
+    // un .env malformato non deve impedire di leggere il database
+  }
+}
+
+loadRootEnv()
+
 /** Percorso del file SQLite. Relativo ⇒ risolto dalla root del monorepo. */
 export function resolveDbPath(): string {
   const raw = process.env.DATABASE_URL ?? './data/ecom.db'

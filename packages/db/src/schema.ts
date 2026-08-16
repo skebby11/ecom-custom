@@ -1,6 +1,7 @@
+import { DEFAULT_VARIANT_TITLE } from '@ecom/shared/format'
 import { sql } from 'drizzle-orm'
 import { relations } from 'drizzle-orm'
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 /**
  * Convenzioni:
@@ -85,7 +86,7 @@ export const variants = sqliteTable(
       .references(() => products.id, { onDelete: 'cascade' }),
     sku: text('sku').notNull(),
     /** "M / Rosso" — derivato dai valori opzione, denormalizzato per comodità */
-    title: text('title').notNull().default('Default'),
+    title: text('title').notNull().default(DEFAULT_VARIANT_TITLE),
     priceCents: integer('price_cents').notNull(),
     compareAtCents: integer('compare_at_cents'),
     stock: integer('stock').notNull().default(0),
@@ -110,7 +111,7 @@ export const variantOptionValues = sqliteTable(
       .references(() => optionValues.id, { onDelete: 'cascade' }),
   },
   (t) => ({
-    pk: uniqueIndex('variant_option_values_pk').on(t.variantId, t.optionValueId),
+    pk: primaryKey({ columns: [t.variantId, t.optionValueId] }),
     valueIdx: index('variant_option_values_value_idx').on(t.optionValueId),
   })
 )
@@ -139,7 +140,7 @@ export const productCollections = sqliteTable(
       .references(() => collections.id, { onDelete: 'cascade' }),
   },
   (t) => ({
-    pk: uniqueIndex('product_collections_pk').on(t.productId, t.collectionId),
+    pk: primaryKey({ columns: [t.productId, t.collectionId] }),
     collectionIdx: index('product_collections_collection_idx').on(t.collectionId),
   })
 )

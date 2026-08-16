@@ -64,7 +64,9 @@ con un messaggio esplicito: tutto il resto del sito continua a funzionare.
 
 ## Admin
 
-Autenticazione a cookie di sessione `admin_session` (HttpOnly, SameSite=Lax, 7 giorni).
+Autenticazione a cookie di sessione `admin_session`: `HttpOnly`, `SameSite=Lax`, `Path=/`,
+scadenza 7 giorni e `Secure` attivo quando `NODE_ENV=production`. Fuori da localhost il cookie
+va servito solo su HTTPS: senza `Secure` una sessione amministrativa viaggia anche in chiaro.
 Tutte le rotte `/api/admin/*` tranne `login` richiedono la sessione, altrimenti `401`.
 
 | Metodo | Path | Body | Risposta |

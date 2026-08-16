@@ -93,11 +93,11 @@ CREATE INDEX `orders_status_idx` ON `orders` (`status`);--> statement-breakpoint
 CREATE TABLE `product_collections` (
 	`product_id` integer NOT NULL,
 	`collection_id` integer NOT NULL,
+	PRIMARY KEY(`product_id`, `collection_id`),
 	FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`collection_id`) REFERENCES `collections`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `product_collections_pk` ON `product_collections` (`product_id`,`collection_id`);--> statement-breakpoint
 CREATE INDEX `product_collections_collection_idx` ON `product_collections` (`collection_id`);--> statement-breakpoint
 CREATE TABLE `product_images` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -134,17 +134,17 @@ CREATE INDEX `products_status_idx` ON `products` (`status`);--> statement-breakp
 CREATE TABLE `variant_option_values` (
 	`variant_id` integer NOT NULL,
 	`option_value_id` integer NOT NULL,
+	PRIMARY KEY(`variant_id`, `option_value_id`),
 	FOREIGN KEY (`variant_id`) REFERENCES `variants`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`option_value_id`) REFERENCES `option_values`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `variant_option_values_pk` ON `variant_option_values` (`variant_id`,`option_value_id`);--> statement-breakpoint
 CREATE INDEX `variant_option_values_value_idx` ON `variant_option_values` (`option_value_id`);--> statement-breakpoint
 CREATE TABLE `variants` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`product_id` integer NOT NULL,
 	`sku` text NOT NULL,
-	`title` text DEFAULT 'Default' NOT NULL,
+	`title` text DEFAULT 'Predefinita' NOT NULL,
 	`price_cents` integer NOT NULL,
 	`compare_at_cents` integer,
 	`stock` integer DEFAULT 0 NOT NULL,

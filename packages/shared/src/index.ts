@@ -81,6 +81,18 @@ export type Collection = z.infer<typeof collectionSchema>
 /* ------------------------------------------------------------------ */
 /* Query PLP                                                           */
 /* ------------------------------------------------------------------ */
+/**
+ * Booleano da querystring. Accetta le forme che un form HTML o un link possono
+ * produrre e rifiuta il resto, invece di considerare vero tutto ciò che non è
+ * la stringa vuota.
+ */
+export const booleanQueryParam = z
+  .union([z.boolean(), z.enum(['true', '1', 'on', 'yes', 'false', '0', 'off', 'no', ''])])
+  .transform((value) => {
+    if (typeof value === 'boolean') return value
+    return value === 'true' || value === '1' || value === 'on' || value === 'yes'
+  })
+
 export const productQuerySchema = z.object({
   q: z.string().trim().min(1).optional(),
   collection: z.string().trim().min(1).optional(),
@@ -89,7 +101,9 @@ export const productQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(60).default(12),
   minPrice: z.coerce.number().int().min(0).optional(),
   maxPrice: z.coerce.number().int().min(0).optional(),
-  inStock: z.coerce.boolean().optional(),
+  // `z.coerce.boolean()` usa `Boolean(input)`: qualsiasi stringa non vuota
+  // diventa `true`, quindi `?inStock=false` filtrerebbe al contrario
+  inStock: booleanQueryParam.optional(),
 })
 export type ProductQuery = z.infer<typeof productQuerySchema>
 

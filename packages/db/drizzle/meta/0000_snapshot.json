@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "eb50150b-ee8d-4797-aa29-ec7122aa1fc6",
+  "id": "725ee571-265b-435f-92af-433c6d95db28",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "admin_sessions": {
@@ -634,14 +634,6 @@
         }
       },
       "indexes": {
-        "product_collections_pk": {
-          "name": "product_collections_pk",
-          "columns": [
-            "product_id",
-            "collection_id"
-          ],
-          "isUnique": true
-        },
         "product_collections_collection_idx": {
           "name": "product_collections_collection_idx",
           "columns": [
@@ -678,7 +670,15 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "product_collections_product_id_collection_id_pk": {
+          "columns": [
+            "product_id",
+            "collection_id"
+          ],
+          "name": "product_collections_product_id_collection_id_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
@@ -914,14 +914,6 @@
         }
       },
       "indexes": {
-        "variant_option_values_pk": {
-          "name": "variant_option_values_pk",
-          "columns": [
-            "variant_id",
-            "option_value_id"
-          ],
-          "isUnique": true
-        },
         "variant_option_values_value_idx": {
           "name": "variant_option_values_value_idx",
           "columns": [
@@ -958,7 +950,15 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "variant_option_values_variant_id_option_value_id_pk": {
+          "columns": [
+            "variant_id",
+            "option_value_id"
+          ],
+          "name": "variant_option_values_variant_id_option_value_id_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
@@ -992,7 +992,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'Default'"
+          "default": "'Predefinita'"
         },
         "price_cents": {
           "name": "price_cents",

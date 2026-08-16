@@ -8,6 +8,7 @@
  * - l'utente admin viene creato oppure, se l'email esiste già, solo l'hash password
  *   viene aggiornato (nessun duplicato).
  */
+import { DEFAULT_VARIANT_TITLE } from '@ecom/shared/format'
 import { createDb } from './index.js'
 import { hashPassword } from './password.js'
 import {
@@ -33,8 +34,44 @@ interface SeedSummary {
 }
 
 function buildVariantTitle(selection: string[]): string {
-  return selection.length > 0 ? selection.join(' / ') : 'Default'
+  return selection.length > 0 ? selection.join(' / ') : DEFAULT_VARIANT_TITLE
 }
+
+/** Password che non devono mai finire in un ambiente raggiungibile da fuori. */
+const WEAK_PASSWORDS = new Set(['changeme123', 'password', 'admin1234', '12345678'])
+
+/**
+ * Le credenziali admin arrivano solo dall'ambiente, senza valori di ripiego:
+ * un default nel codice significa che un'installazione lasciata a metà espone
+ * un account amministratore dalle credenziali note.
+ */
+function readAdminCredentials(): { email: string; password: string } {
+  const email = (process.env.ADMIN_EMAIL ?? '').trim()
+  const password = process.env.ADMIN_PASSWORD ?? ''
+
+  const problems: string[] = []
+  if (!email) problems.push('ADMIN_EMAIL non è impostata')
+  else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) problems.push(`ADMIN_EMAIL non è un indirizzo valido: ${email}`)
+  if (!password) problems.push('ADMIN_PASSWORD non è impostata')
+  else if (password.length < 8) problems.push('ADMIN_PASSWORD deve essere di almeno 8 caratteri')
+
+  // in sviluppo la password di esempio va bene; altrove è un account regalato
+  if (process.env.NODE_ENV === 'production' && WEAK_PASSWORDS.has(password)) {
+    problems.push('ADMIN_PASSWORD è una password di esempio: cambiala prima di seedare in produzione')
+  }
+
+  if (problems.length > 0) {
+    console.error(`✗ Impossibile creare l'utente admin:\n  - ${problems.join('\n  - ')}`)
+    console.error('\n  Imposta le variabili nel file .env (vedi .env.example) e rilancia il seed.')
+    process.exit(1)
+  }
+
+  return { email, password }
+}
+
+// validate-first: fallire dopo aver già ricreato l'intero catalogo sarebbe
+// solo lavoro sprecato, anche se la transazione poi lo annulla
+const admin = readAdminCredentials()
 
 function runSeed(): SeedSummary {
   return db.transaction((tx) => {
@@ -145,12 +182,10 @@ function runSeed(): SeedSummary {
     }
 
     // ---- 4. utente admin: crea o aggiorna solo l'hash, mai duplicato ---------
-    const adminEmail = (process.env.ADMIN_EMAIL ?? 'admin@example.com').trim()
-    const adminPassword = process.env.ADMIN_PASSWORD ?? 'changeme123'
-    const passwordHash = hashPassword(adminPassword)
+    const passwordHash = hashPassword(admin.password)
 
     tx.insert(adminUsers)
-      .values({ email: adminEmail, passwordHash, name: 'Amministratore' })
+      .values({ email: admin.email, passwordHash, name: 'Amministratore' })
       .onConflictDoUpdate({ target: adminUsers.email, set: { passwordHash } })
       .run()
 
@@ -164,7 +199,6 @@ function runSeed(): SeedSummary {
 }
 
 const summary = runSeed()
-const adminEmail = (process.env.ADMIN_EMAIL ?? 'admin@example.com').trim()
 
 console.log('')
 console.log('✓ Seed completato')
@@ -173,6 +207,6 @@ console.log(
   `  Prodotti   : ${summary.products} (${summary.products - summary.draftProducts} attivi, ${summary.draftProducts} in bozza)`
 )
 console.log(`  Varianti   : ${summary.variants}`)
-console.log(`  Admin      : ${adminEmail}`)
-console.log('  Password   : quella di ADMIN_PASSWORD nel tuo .env (default: changeme123)')
+console.log(`  Admin      : ${admin.email}`)
+console.log('  Password   : quella di ADMIN_PASSWORD nel tuo .env')
 console.log('')

@@ -40,10 +40,15 @@ export function euroToCents(input: string): number | null {
   if (!/^-?\d*$/.test(intPart) || !/^\d*$/.test(decPart)) return null
   if (intPart === '' && decPart === '') return null
 
+  // più di due decimali va rifiutato, non troncato: troncare significa
+  // accettare "12,345" e salvare 12,34 senza dirlo a chi ha scritto il prezzo
+  if (decPart.length > 2) return null
+
   const negative = intPart.startsWith('-')
   const digits = negative ? intPart.slice(1) : intPart
-  const cents = Number(`${digits || '0'}${decPart.padEnd(2, '0').slice(0, 2)}`)
-  if (!Number.isFinite(cents)) return null
+  const cents = Number(`${digits || '0'}${decPart.padEnd(2, '0')}`)
+  // oltre Number.MAX_SAFE_INTEGER l'aritmetica sui centesimi smette di essere esatta
+  if (!Number.isSafeInteger(cents)) return null
   return negative ? -cents : cents
 }
 
@@ -67,6 +72,14 @@ export function calcShippingCents(subtotalCents: number): number {
 
 /** Soglia sotto la quale una variante è segnalata come "sotto scorta" in admin. */
 export const LOW_STOCK_THRESHOLD = 5
+
+/**
+ * Titolo della variante unica di un prodotto senza opzioni. È testo visibile
+ * in scheda prodotto, carrello e admin, quindi in italiano come il resto
+ * dell'interfaccia. Costante condivisa: se cambia qui cambia ovunque, altrimenti
+ * seed, API e admin scriverebbero etichette diverse per la stessa cosa.
+ */
+export const DEFAULT_VARIANT_TITLE = 'Predefinita'
 
 export function slugify(input: string): string {
   return input
