@@ -8,25 +8,29 @@ on:
   push:
     branches: [main]
 
-# Annulla i run precedenti ancora in corso sulla stessa PR (o sullo stesso ref
-# per i push), così non si accumulano job obsoleti in coda.
+# In una pull request annulliamo i run precedenti ancora in coda sulla stessa
+# PR: non ha senso verificare un diff già superato da un nuovo push. Su main
+# invece ogni push deve completare il proprio run fino in fondo, altrimenti
+# un push successivo cancellerebbe la verifica dell'ultimo stato mergiato.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build-and-test:
-    name: Typecheck, build e verifica database
+  static:
+    name: Typecheck e build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout codice
         uses: actions/checkout@v4
 
-      - name: Setup Node 20
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # Il progetto dichiara "engines.node": ">=20" in package.json.
-          node-version: '20'
+          # Legge "engines.node" (">=20") direttamente da package.json: la
+          # versione non va tenuta duplicata fra qui e l'engines del progetto.
+          node-version-file: package.json
           cache: 'npm'
 
       - name: Installazione dipendenze (npm ci)
@@ -43,6 +47,30 @@ jobs:
         run: npm run build
         env:
           PUBLIC_SITE_URL: https://esempio.test
+
+  database:
+    name: Migrazione e seed database
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout codice
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: 'npm'
+
+      # Job separato da "static" così dal nome del check rosso si capisce subito
+      # se è il database o la build a essere rotta. Rifà il proprio npm ci
+      # invece di ereditare i node_modules del job static: i due job girano in
+      # parallelo (nessuna dipendenza reale fra i due), e condividere
+      # l'installazione richiederebbe un upload/download di artifact più lento
+      # e più complesso del semplice npm ci, che qui impiega pochi secondi
+      # grazie alla cache npm di actions/setup-node.
+      - name: Installazione dipendenze (npm ci)
+        run: npm ci
 
       - name: Migrazione database
         # I comandi db:* girano fuori dal processo API: usano solo le variabili
