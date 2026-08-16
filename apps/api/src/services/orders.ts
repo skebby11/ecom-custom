@@ -3,6 +3,7 @@ import { cartItems, getDb, orderItems, orders, products, variants } from '@ecom/
 import { CURRENCY, LOW_STOCK_THRESHOLD, calcShippingCents } from '@ecom/shared'
 import type {
   Address,
+  AdminOrder,
   AdminStats,
   Order,
   OrderStatus,
@@ -54,6 +55,15 @@ function serializeOrder(order: OrderRow, items: OrderItemRow[]): Order {
     currency: order.currency,
     shippingAddress: (order.shippingAddress as Address | null) ?? null,
     createdAt: order.createdAt,
+  }
+}
+
+/** Come `serializeOrder`, ma con i riferimenti Stripe: solo per le rotte admin. */
+function serializeAdminOrder(order: OrderRow, items: OrderItemRow[]): AdminOrder {
+  return {
+    ...serializeOrder(order, items),
+    stripeSessionId: order.stripeSessionId,
+    stripePaymentIntentId: order.stripePaymentIntentId,
   }
 }
 
@@ -234,7 +244,7 @@ export async function markOrderFailed(orderId: string): Promise<void> {
 /* Admin — ordini                                                       */
 /* ------------------------------------------------------------------ */
 
-export async function adminListOrders(params: { status?: OrderStatus; page: number; limit: number }): Promise<Paginated<Order>> {
+export async function adminListOrders(params: { status?: OrderStatus; page: number; limit: number }): Promise<Paginated<AdminOrder>> {
   const db = getDb()
   const conditions = params.status ? [eq(orders.status, params.status)] : []
 
@@ -253,7 +263,7 @@ export async function adminListOrders(params: { status?: OrderStatus; page: numb
   const itemsByOrder = groupBy(items, (i) => i.orderId)
 
   return {
-    items: pageOrders.map((o) => serializeOrder(o, itemsByOrder.get(o.id) ?? [])),
+    items: pageOrders.map((o) => serializeAdminOrder(o, itemsByOrder.get(o.id) ?? [])),
     total,
     page: params.page,
     pages: Math.max(1, Math.ceil(total / params.limit)),
@@ -261,22 +271,22 @@ export async function adminListOrders(params: { status?: OrderStatus; page: numb
   }
 }
 
-export async function adminGetOrder(id: string): Promise<Order> {
+export async function adminGetOrder(id: string): Promise<AdminOrder> {
   const db = getDb()
   const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1)
   if (!order) throw notFound('Ordine non trovato')
   const items = await loadOrderItems(id)
-  return serializeOrder(order, items)
+  return serializeAdminOrder(order, items)
 }
 
-export async function adminUpdateOrderStatus(id: string, status: OrderStatus): Promise<Order> {
+export async function adminUpdateOrderStatus(id: string, status: OrderStatus): Promise<AdminOrder> {
   const db = getDb()
   const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1)
   if (!order) throw notFound('Ordine non trovato')
 
   await db.update(orders).set({ status, updatedAt: new Date().toISOString() }).where(eq(orders.id, id))
   const items = await loadOrderItems(id)
-  return serializeOrder({ ...order, status }, items)
+  return serializeAdminOrder({ ...order, status }, items)
 }
 
 /* ------------------------------------------------------------------ */

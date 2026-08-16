@@ -113,9 +113,16 @@ Tutte le rotte `/api/admin/*` tranne `login` richiedono la sessione, altrimenti 
 | POST | `/api/admin/collections` | `adminCollectionInputSchema` | `Collection` |
 | PUT | `/api/admin/collections/:id` | idem | `Collection` |
 | DELETE | `/api/admin/collections/:id` | — | `{ ok: true }` |
-| GET | `/api/admin/orders` | `?status&page&limit` | `Paginated<Order>` |
-| GET | `/api/admin/orders/:id` | — | `Order` |
-| PATCH | `/api/admin/orders/:id` | `adminOrderUpdateSchema` | `Order` |
+| GET | `/api/admin/orders` | `?status&page&limit` | `Paginated<AdminOrder>` |
+| GET | `/api/admin/orders/:id` | — | `AdminOrder` |
+| PATCH | `/api/admin/orders/:id` | `adminOrderUpdateSchema` | `AdminOrder` |
+
+`AdminOrder` (`adminOrderSchema`) è `Order` più `stripeSessionId` e `stripePaymentIntentId`,
+entrambi `string | null`. I due riferimenti servono a ritrovare sessione e pagamento nella
+dashboard Stripe e restano fuori da `Order`: quello alimenta anche `GET /api/orders/:id?token=…`,
+che il cliente raggiunge con un token, e lì gli id Stripe non servono. `stripeSessionId` è
+valorizzato alla creazione della Checkout Session, `stripePaymentIntentId` all'arrivo del webhook
+`checkout.session.completed`: prima di quei due momenti valgono `null`.
 
 `PUT /api/admin/products/:id` fa un replace completo di opzioni e varianti in una
 transazione: le varianti con `id` esistente vengono aggiornate, quelle senza `id`

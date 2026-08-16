@@ -4,7 +4,7 @@ import StatusBadge from '~/components/admin/StatusBadge.astro'
 import { requireSession, getOrder, updateOrderStatus, parseOrderStatus } from '~/lib/admin-api'
 import { ApiError } from '~/lib/api'
 import { formatPrice, orderStatuses } from '@ecom/shared/format'
-import { type Order, type OrderStatus } from '@ecom/shared'
+import { type OrderStatus } from '@ecom/shared'
 
 const session = await requireSession(Astro)
 if (session instanceof Response) return session
@@ -41,15 +41,6 @@ if (Astro.request.method === 'POST') {
 
 const order = await getOrder(Astro.request, id as string)
 if (!order) return Astro.redirect('/admin/ordini')
-
-/**
- * `Order` (da @ecom/shared) non include riferimenti Stripe: qui si leggono in modo
- * difensivo, nel caso l'endpoint admin li aggiunga come campi extra non tipizzati.
- */
-const stripe = order as Order & {
-  stripeSessionId?: string | null
-  stripePaymentIntentId?: string | null
-}
 ---
 
 <AdminLayout title={`Ordine ${order.number}`} user={user}>
@@ -144,8 +135,8 @@ const stripe = order as Order & {
         </div>
         <div>
           <p class="text-xs text-muted uppercase">Riferimenti Stripe</p>
-          <p class="break-all text-ink">{stripe.stripeSessionId ?? '—'}</p>
-          <p class="break-all text-ink">{stripe.stripePaymentIntentId ?? '—'}</p>
+          <p class="break-all text-ink"><span class="text-muted">Sessione:</span> {order.stripeSessionId ?? '—'}</p>
+          <p class="break-all text-ink"><span class="text-muted">Pagamento:</span> {order.stripePaymentIntentId ?? '—'}</p>
         </div>
       </div>
 

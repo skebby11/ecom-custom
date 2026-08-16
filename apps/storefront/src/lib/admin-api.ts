@@ -1,12 +1,12 @@
 import type { AstroGlobal } from 'astro'
 import type {
   AdminCollectionInput,
+  AdminOrder,
   AdminProductInput,
   AdminProductRow,
   AdminStats,
   Collection,
   LowStockVariant,
-  Order,
   OrderStatus,
   Paginated,
   ProductDetail,
@@ -298,23 +298,23 @@ export interface ListOrdersQuery {
 export function listOrders(
   request: Request,
   query: ListOrdersQuery = {}
-): Promise<Paginated<Order>> {
-  return adminFetch<Paginated<Order>>('/api/admin/orders', {
+): Promise<Paginated<AdminOrder>> {
+  return adminFetch<Paginated<AdminOrder>>('/api/admin/orders', {
     request,
     query: { status: query.status || undefined, page: query.page, limit: query.limit },
   })
 }
 
-export function getOrder(request: Request, id: number | string): Promise<Order | null> {
-  return adminFetchOrNull<Order>(`/api/admin/orders/${id}`, { request })
+export function getOrder(request: Request, id: number | string): Promise<AdminOrder | null> {
+  return adminFetchOrNull<AdminOrder>(`/api/admin/orders/${id}`, { request })
 }
 
 export function updateOrderStatus(
   request: Request,
   id: number | string,
   status: OrderStatus
-): Promise<Order> {
-  return adminFetch<Order>(`/api/admin/orders/${id}`, { request, method: 'PATCH', body: { status } })
+): Promise<AdminOrder> {
+  return adminFetch<AdminOrder>(`/api/admin/orders/${id}`, { request, method: 'PATCH', body: { status } })
 }
 
 /* ------------------------------------------------------------------ */
