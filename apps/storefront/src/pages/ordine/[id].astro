@@ -42,6 +42,9 @@ if (!order) return Astro.redirect('/404')
 // token, ma il numero ordine nel path è comunque dato che non deve finire nei
 // log/analytics di siti terzi linkati da qui (es. link "Continua lo shopping").
 Astro.response.headers.set('Referrer-Policy', 'no-referrer')
+// Pagina autenticata dal cookie HttpOnly: una cache condivisa che la
+// riservasse senza quel cookie esporrebbe dati e indirizzo di un altro cliente.
+Astro.response.headers.set('Cache-Control', 'private, no-store')
 
 const statusLabels: Record<string, string> = {
   pending: 'Pagamento in elaborazione',

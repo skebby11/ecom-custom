@@ -19,12 +19,14 @@ che lo introduce.
 | Codice | Stato | Quando |
 | --- | --- | --- |
 | `VALIDATION_ERROR` | 400 | payload che non supera lo schema Zod; `details` contiene `zodError.flatten()` |
-| `FST_ERR_*` | 400 | errori di Fastify prima delle rotte: JSON malformato, body troppo grande, content-type non supportato |
+| `FST_ERR_CTP_INVALID_JSON_BODY` | 400 | JSON malformato nel body della richiesta |
 | `UNAUTHORIZED` | 401 | sessione admin assente o scaduta |
 | `NOT_FOUND` | 404 | risorsa inesistente, id malformato, oppure token ordine errato |
 | `OUT_OF_STOCK` | 409 | quantità richiesta superiore alla disponibilità della variante |
 | `CART_EMPTY` | 409 | checkout su un carrello senza righe |
 | `DUPLICATE` | 409 | violazione di unicità; `details.field` indica il campo (`slug`, `sku`, `email`) |
+| `FST_ERR_CTP_BODY_TOO_LARGE` | 413 | body della richiesta oltre il limite configurato |
+| `FST_ERR_CTP_INVALID_MEDIA_TYPE` | 415 | `Content-Type` non supportato dai parser registrati |
 | `STRIPE_NOT_CONFIGURED` | 503 | `STRIPE_SECRET_KEY` mancante o ancora al valore segnaposto |
 | `INTERNAL_ERROR` | 500 | qualsiasi altro errore; il dettaglio resta nei log del server |
 

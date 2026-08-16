@@ -20,8 +20,21 @@ function loadDotEnv(): void {
 
 loadDotEnv()
 
+/**
+ * NODE_ENV normalizzato una sola volta, usato ovunque nel processo. Prima
+ * `assertProductionEnv()` trattava un valore assente come "production" (fail
+ * closed) mentre lo schema Zod di `env.NODE_ENV` lo faceva ricadere su
+ * "development" (fail open): con `PUBLIC_SITE_URL` configurata correttamente
+ * il server partiva comunque, ma `buildApp()` restava convinto di essere in
+ * sviluppo e riapriva CORS a `localhost` con `credentials: true`. Un solo
+ * default, coerente e restrittivo, elimina la divergenza.
+ */
+const effectiveNodeEnv: 'development' | 'production' | 'test' =
+  process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
+    ? process.env.NODE_ENV
+    : 'production'
+
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DATABASE_URL: z.string().min(1).default('./data/ecom.db'),
   API_PORT: z.coerce.number().int().positive().default(3001),
   API_HOST: z.string().min(1).default('0.0.0.0'),
@@ -31,7 +44,16 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 })
 
-export const env = envSchema.parse(process.env)
+export const env = { ...envSchema.parse(process.env), NODE_ENV: effectiveNodeEnv }
+
+/** Hostname dell'URL, o `undefined` se non è un URL valido (niente eccezioni qui). */
+function safeHostname(value: string): string | undefined {
+  try {
+    return new URL(value).hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * Fuori dallo sviluppo, restare sui default di `.env.example` è quasi sempre un
@@ -40,16 +62,23 @@ export const env = envSchema.parse(process.env)
  * in uno stato che fallisce solo al primo pagamento.
  */
 export function assertProductionEnv(): void {
-  if ((process.env.NODE_ENV ?? 'production') === 'development') return
+  if (env.NODE_ENV === 'development') return
 
   const problems: string[] = []
-  if (env.PUBLIC_SITE_URL.includes('localhost') || env.PUBLIC_SITE_URL.includes('127.0.0.1')) {
+
+  // Confrontiamo l'hostname isolato, non il testo dell'URL: una ricerca
+  // testuale non blocca `127.0.0.2`/altri indirizzi `127/8`/`::1`, e rifiuta
+  // per errore host pubblici che contengono "localhost" nel path.
+  const hostname = safeHostname(env.PUBLIC_SITE_URL)
+  const isLoopback =
+    hostname === 'localhost' || hostname === '::1' || /^127(?:\.\d{1,3}){3}$/.test(hostname ?? '')
+  if (isLoopback) {
     problems.push(`PUBLIC_SITE_URL punta ancora a ${env.PUBLIC_SITE_URL}`)
   }
 
   if (problems.length > 0) {
     throw new Error(
-      `Configurazione non valida per NODE_ENV="${process.env.NODE_ENV ?? 'production'}":\n` +
+      `Configurazione non valida per NODE_ENV="${env.NODE_ENV}":\n` +
         problems.map((p) => `  - ${p}`).join('\n')
     )
   }

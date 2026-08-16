@@ -32,7 +32,7 @@ function redactQueryParams(url: string, params: string[]): string {
   let touched = false
   for (const param of params) {
     if (search.has(param)) {
-      search.set(param, 'redatto')
+      search.set(param, '[redatto]')
       touched = true
     }
   }

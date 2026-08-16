@@ -19,6 +19,8 @@ export const GET: APIRoute = async ({ params, cookies }) => {
 
   return new Response(JSON.stringify({ status: order.status }), {
     status: 200,
-    headers: { 'Content-Type': 'application/json' },
+    // Come la pagina ordine: risposta autenticata dal cookie, mai da cache
+    // condivisa, altrimenti il polling può restare bloccato su uno stato vecchio.
+    headers: { 'Cache-Control': 'private, no-store', 'Content-Type': 'application/json' },
   })
 }
