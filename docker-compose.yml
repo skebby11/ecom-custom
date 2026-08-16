@@ -24,11 +24,13 @@ services:
     build:
       context: .
       dockerfile: docker/storefront.Dockerfile
-      # PUBLIC_API_URL va inglobata nel bundle browser durante la build (vedi
-      # docker/storefront.Dockerfile): letta da .env solo per la build, non a
-      # runtime. Cambiarla richiede un rebuild dell'immagine (non basta `up -d`).
+      # PUBLIC_API_URL e PUBLIC_SITE_URL vanno inglobate nel bundle browser
+      # durante la build (vedi docker/storefront.Dockerfile): lette da .env solo
+      # per la build, non a runtime. Cambiarle richiede un rebuild dell'immagine
+      # (non basta `up -d`).
       args:
         PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3001}
+        PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:4321}
     env_file: .env
     environment:
       # Rete interna Docker: il server Astro (SSR) chiama l'API tramite il

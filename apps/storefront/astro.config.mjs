@@ -20,8 +20,9 @@ function parseSiteUrl(value) {
     }
     return new URL(FALLBACK_SITE_URL)
   }
+  let parsed
   try {
-    return new URL(value)
+    parsed = new URL(value)
   } catch {
     if (isProd) {
       throw new Error(`[astro.config] PUBLIC_SITE_URL non è un URL valido: ${value}`)
@@ -29,6 +30,14 @@ function parseSiteUrl(value) {
     console.warn(`[astro.config] PUBLIC_SITE_URL non è un URL valido, uso il fallback: ${value}`)
     return new URL(FALLBACK_SITE_URL)
   }
+  // Il fallback di sviluppo (docker-compose.yml, un .env dimenticato) è
+  // sintatticamente un URL valido: senza questo controllo il build di
+  // produzione non si accorgerebbe di star per incorporare un'origine
+  // locale nell'immagine storefront.
+  if (isProd && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
+    throw new Error(`[astro.config] PUBLIC_SITE_URL non può puntare a localhost in produzione: ${value}`)
+  }
+  return parsed
 }
 
 const parsedSiteUrl = parseSiteUrl(process.env.PUBLIC_SITE_URL)
