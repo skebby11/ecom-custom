@@ -169,8 +169,7 @@ const cart = Astro.locals.cart
     }
 
     try {
-      const apiUrl = import.meta.env.PUBLIC_API_URL || 'http://localhost:3001'
-      const res = await fetch(`${apiUrl}/api/checkout/session`, {
+      const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cartId, email, shippingAddress }),

@@ -42,7 +42,7 @@ const isPending = order.status === 'pending'
         </p>
       )}
 
-      <div class="mt-8 rounded-[--radius-card] border border-line">
+      <div class="mt-8 rounded-(--radius-card) border border-line">
         <ul class="divide-y divide-line">
           {order.items.map((item) => (
             <li class="flex gap-4 p-4">
@@ -96,16 +96,18 @@ const isPending = order.status === 'pending'
   </div>
 
   {isPending && (
-    <script define:vars={{ orderId: id, token, apiUrl: import.meta.env.PUBLIC_API_URL || 'http://localhost:3001' }}>
+    <script define:vars={{ orderId: id, token }}>
       // Il webhook Stripe può arrivare con qualche secondo di ritardo: ricontrolliamo
       // lo stato dell'ordine ogni 3s (max 10 tentativi) e ricarichiamo quando cambia.
+      // Il polling passa dal proxy same-origin /api/orders/:id, così l'access token
+      // dell'ordine non lascia mai il primo-party e non serve conoscere l'URL dell'API.
       let attempts = 0
       const maxAttempts = 10
 
       const timer = setInterval(async () => {
         attempts += 1
         try {
-          const res = await fetch(`${apiUrl}/api/orders/${orderId}?token=${encodeURIComponent(token)}`)
+          const res = await fetch(`/api/orders/${orderId}?token=${encodeURIComponent(token)}`)
           if (res.ok) {
             const data = await res.json()
             if (data.status !== 'pending') {

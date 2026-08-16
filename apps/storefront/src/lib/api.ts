@@ -38,12 +38,15 @@ type RequestOptions = RequestInit & {
   query?: Record<string, string | number | boolean | undefined | null>
 }
 
+/** Tempo massimo di attesa per una richiesta verso l'API prima di abortirla. */
+const REQUEST_TIMEOUT_MS = 8000
+
 /**
  * Wrapper fetch verso l'API. Lancia `ApiError` sulle risposte non-2xx così che
  * le pagine possano decidere fra 404 e messaggio d'errore inline.
  */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { query, headers, ...init } = options
+  const { query, headers, signal: callerSignal, ...init } = options
   const url = new URL(`${API_URL}${path.startsWith('/') ? path : `/${path}`}`)
 
   for (const [key, value] of Object.entries(query ?? {})) {
@@ -52,10 +55,22 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     }
   }
 
+  // Senza un deadline, un'API che accetta la connessione ma non risponde mai
+  // terrebbe in sospeso l'intera richiesta SSR (es. `loadCart` nel middleware,
+  // eseguito per ogni visita). Il timeout usa il proprio AbortController ma
+  // rispetta comunque un eventuale `signal` passato dal chiamante.
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS)
+  if (callerSignal) {
+    if (callerSignal.aborted) timeoutController.abort()
+    else callerSignal.addEventListener('abort', () => timeoutController.abort(), { once: true })
+  }
+
   let res: Response
   try {
     res = await fetch(url, {
       ...init,
+      signal: timeoutController.signal,
       headers: {
         Accept: 'application/json',
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
@@ -63,7 +78,12 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       },
     })
   } catch (cause) {
+    if (timeoutController.signal.aborted && !callerSignal?.aborted) {
+      throw new ApiError(503, 'API_TIMEOUT', `Timeout nella richiesta a ${API_URL} (oltre ${REQUEST_TIMEOUT_MS}ms)`, cause)
+    }
     throw new ApiError(503, 'API_UNREACHABLE', `API non raggiungibile su ${API_URL}`, cause)
+  } finally {
+    clearTimeout(timeoutId)
   }
 
   if (res.status === 204) return undefined as T

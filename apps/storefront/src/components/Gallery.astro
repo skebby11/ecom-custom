@@ -12,7 +12,7 @@ const first = gallery[0]
 ---
 
 <div data-gallery>
-  <div class="aspect-square overflow-hidden rounded-[--radius-card] border border-line bg-surface-alt">
+  <div class="aspect-square overflow-hidden rounded-(--radius-card) border border-line bg-surface-alt">
     <img
       data-main-image
       src={first.url}
@@ -34,6 +34,7 @@ const first = gallery[0]
             data-thumb
             data-full={img.url}
             data-alt={img.alt ?? productTitle}
+            aria-label={`Mostra immagine ${i + 1} di ${gallery.length}`}
             aria-current={i === 0 ? 'true' : 'false'}
             class="block h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 border-transparent aria-[current=true]:border-brand-500"
           >

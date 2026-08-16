@@ -98,35 +98,54 @@ const missingForFreeShipping = cart ? Math.max(0, FREE_SHIPPING_THRESHOLD_CENTS 
     const dec = row.querySelector<HTMLButtonElement>('[data-qty-dec]')
     const inc = row.querySelector<HTMLButtonElement>('[data-qty-inc]')
     const removeBtn = row.querySelector<HTMLButtonElement>('[data-remove]')
+    const controls = [qtyInput, dec, inc, removeBtn].filter(
+      (el): el is HTMLInputElement | HTMLButtonElement => el != null
+    )
+
+    // Una mutazione alla volta per riga: senza questo lock due click ravvicinati
+    // (es. incrementa due volte) possono arrivare al backend in ordine invertito
+    // e lasciare la quantità sbagliata.
+    let pending = false
+
+    function setLocked(locked: boolean) {
+      pending = locked
+      row.style.opacity = locked ? '0.5' : '1'
+      controls.forEach((el) => {
+        el.disabled = locked
+      })
+    }
 
     async function applyQty(qty: number) {
-      row.style.opacity = '0.5'
+      if (pending) return
+      setLocked(true)
       const result = await updateQty(itemId, qty)
       if (result) window.location.reload()
-      else row.style.opacity = '1'
+      else setLocked(false)
     }
 
     dec?.addEventListener('click', () => {
-      if (!qtyInput) return
+      if (pending || !qtyInput) return
       const next = Math.max(1, Number(qtyInput.value) - 1)
       qtyInput.value = String(next)
       applyQty(next)
     })
     inc?.addEventListener('click', () => {
-      if (!qtyInput) return
+      if (pending || !qtyInput) return
       const next = Number(qtyInput.value) + 1
       qtyInput.value = String(next)
       applyQty(next)
     })
     qtyInput?.addEventListener('change', () => {
+      if (pending || !qtyInput) return
       const next = Math.max(1, Number(qtyInput.value) || 1)
       applyQty(next)
     })
     removeBtn?.addEventListener('click', async () => {
-      row.style.opacity = '0.5'
+      if (pending) return
+      setLocked(true)
       const result = await removeItem(itemId)
       if (result) window.location.reload()
-      else row.style.opacity = '1'
+      else setLocked(false)
     })
   })
 </script>

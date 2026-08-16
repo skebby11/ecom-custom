@@ -1,7 +1,9 @@
 import type { APIRoute } from 'astro'
 import type { Cart } from '@ecom/shared'
+import { addToCartSchema, updateCartItemSchema } from '@ecom/shared'
 import { ApiError, apiFetch } from '~/lib/api'
 import { getCartId, setCartCookie } from '~/lib/cart'
+import { errorResponse, jsonResponse } from '~/lib/route-response'
 
 /**
  * Proxy verso l'API carrello: crea il cookie `cart_id` al primo "aggiungi al
@@ -14,15 +16,47 @@ type Body =
   | { action: 'updateQty'; itemId: number; qty: number }
   | { action: 'remove'; itemId: number }
 
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
+/** Segmento di path sicuro: niente `/`, `.` o caratteri che permettano di uscire da `/api/cart/<id>`. */
+const SAFE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+
+function isSafePathId(value: unknown): value is string {
+  return typeof value === 'string' && SAFE_ID_PATTERN.test(value)
 }
 
-function errorResponse(status: number, code: string, message: string): Response {
-  return jsonResponse({ error: { code, message } }, status)
+function isSafeItemId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 && Number.isSafeInteger(value)
+}
+
+/**
+ * Valida il corpo grezzo della richiesta. Il cast `as Body` da solo non basta:
+ * un client può inviare qualunque JSON (es. `itemId: "../../orders/1"`), e
+ * quel valore finirebbe interpolato nel path passato a `apiFetch`.
+ */
+function parseBody(raw: unknown): Body | null {
+  if (!raw || typeof raw !== 'object' || !('action' in raw)) return null
+  const action = (raw as { action?: unknown }).action
+
+  if (action === 'add') {
+    const parsed = addToCartSchema.safeParse(raw)
+    if (!parsed.success) return null
+    return { action: 'add', variantId: parsed.data.variantId, qty: parsed.data.qty }
+  }
+
+  if (action === 'updateQty') {
+    const itemId = (raw as { itemId?: unknown }).itemId
+    if (!isSafeItemId(itemId)) return null
+    const parsed = updateCartItemSchema.safeParse(raw)
+    if (!parsed.success) return null
+    return { action: 'updateQty', itemId, qty: parsed.data.qty }
+  }
+
+  if (action === 'remove') {
+    const itemId = (raw as { itemId?: unknown }).itemId
+    if (!isSafeItemId(itemId)) return null
+    return { action: 'remove', itemId }
+  }
+
+  return null
 }
 
 async function runAction(cartId: string, body: Body): Promise<Cart> {
@@ -45,19 +79,23 @@ async function runAction(cartId: string, body: Body): Promise<Cart> {
 }
 
 export const POST: APIRoute = async ({ request, cookies }) => {
-  let body: Body
+  let rawBody: unknown
   try {
-    body = (await request.json()) as Body
+    rawBody = await request.json()
   } catch {
     return errorResponse(400, 'VALIDATION_ERROR', 'Corpo della richiesta non valido')
   }
 
-  if (!body || typeof body !== 'object' || !('action' in body)) {
-    return errorResponse(400, 'VALIDATION_ERROR', 'Azione non riconosciuta')
+  const body = parseBody(rawBody)
+  if (!body) {
+    return errorResponse(400, 'VALIDATION_ERROR', 'Azione non riconosciuta o dati non validi')
   }
 
   try {
     let cartId = getCartId(cookies)
+    // Il cookie è manomettibile dal client: se non rispetta il formato atteso,
+    // trattalo come assente invece di interpolarlo in un path verso l'API.
+    if (cartId && !isSafePathId(cartId)) cartId = undefined
     if (!cartId) {
       const created = await apiFetch<Cart>('/api/cart', { method: 'POST' })
       cartId = created.id

@@ -3,6 +3,7 @@ import Layout from '~/layouts/Layout.astro'
 import ProductCard from '~/components/ProductCard.astro'
 import CollectionCard from '~/components/CollectionCard.astro'
 import { api } from '~/lib/api'
+import { toSafeJson } from '~/lib/json-ld'
 import { formatPrice, FREE_SHIPPING_THRESHOLD_CENTS } from '@ecom/shared/format'
 import type { Collection, ProductListItem } from '@ecom/shared'
 
@@ -38,11 +39,11 @@ const organizationJsonLd = {
   title={`${siteName} — negozio online`}
   description={`Scopri il catalogo di ${siteName}: prodotti selezionati, spedizione rapida e pagamenti sicuri.`}
 >
-  <script type="application/ld+json" set:html={JSON.stringify(organizationJsonLd)} />
+  <script type="application/ld+json" set:html={toSafeJson(organizationJsonLd)} />
 
   <section class="relative overflow-hidden bg-ink">
     <img
-      src="https://picsum.photos/seed/ecom-hero/1600/900"
+      src="/hero-placeholder.svg"
       alt="Selezione di prodotti in evidenza"
       width="1600"
       height="900"

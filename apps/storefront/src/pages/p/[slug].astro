@@ -4,12 +4,13 @@ import Breadcrumb from '~/components/Breadcrumb.astro'
 import Gallery from '~/components/Gallery.astro'
 import VariantSelector from '~/components/VariantSelector.astro'
 import { api } from '~/lib/api'
+import { toSafeJson } from '~/lib/json-ld'
 
 const { slug } = Astro.params
-if (!slug) return Astro.redirect('/404')
+if (!slug) return Astro.rewrite('/404')
 
 const product = await api.product(slug)
-if (!product) return Astro.redirect('/404')
+if (!product) return Astro.rewrite('/404')
 
 const defaultVariant = product.variants.find((v) => v.stock > 0) ?? product.variants[0]
 const primaryCollection = product.collections[0]
@@ -72,8 +73,8 @@ const breadcrumbJsonLd = {
   description={product.excerpt ?? product.description ?? product.title}
   ogImage={primaryImage}
 >
-  <script type="application/ld+json" set:html={JSON.stringify(productJsonLd)} />
-  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)} />
+  <script type="application/ld+json" set:html={toSafeJson(productJsonLd)} />
+  <script type="application/ld+json" set:html={toSafeJson(breadcrumbJsonLd)} />
 
   <div class="container-page py-10">
     <Breadcrumb items={breadcrumbItems} />

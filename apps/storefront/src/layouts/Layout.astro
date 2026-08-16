@@ -60,7 +60,7 @@ const year = new Date().getFullYear()
   </a>
 
   <header class="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur">
-    <input type="checkbox" id="nav-toggle" class="peer hidden" />
+    <input type="checkbox" id="nav-toggle" class="peer sr-only" aria-label="Apri il menu" />
 
     <div class="container-page flex h-16 items-center gap-4">
       <a href="/" class="shrink-0 text-lg font-bold tracking-tight text-ink">
@@ -109,8 +109,8 @@ const year = new Date().getFullYear()
 
       <label
         for="nav-toggle"
-        class="inline-flex cursor-pointer items-center justify-center rounded-lg p-2.5 text-ink hover:bg-surface-alt lg:hidden"
-        aria-label="Apri il menu"
+        class="inline-flex cursor-pointer items-center justify-center rounded-lg p-2.5 text-ink hover:bg-surface-alt peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600 lg:hidden"
+        aria-hidden="true"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="3" y1="6" x2="21" y2="6"></line>

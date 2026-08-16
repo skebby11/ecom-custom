@@ -1,6 +1,7 @@
 ---
 import type { ProductDetail } from '@ecom/shared'
 import { formatPrice } from '@ecom/shared/format'
+import { toSafeJson } from '~/lib/json-ld'
 
 export interface Props {
   product: ProductDetail
@@ -35,7 +36,7 @@ function availabilityLabel(stock: number): string {
 ---
 
 <div data-variant-root class="flex flex-col gap-5">
-  <script type="application/json" id="variant-data" set:html={JSON.stringify(product.variants)} />
+  <script type="application/json" id="variant-data" set:html={toSafeJson(product.variants)} />
 
   <div class="flex items-baseline gap-3">
     <span data-price class="text-2xl font-bold text-ink">
@@ -224,7 +225,12 @@ function availabilityLabel(stock: number): string {
 
     addBtn?.addEventListener('click', async () => {
       const variantId = Number(addBtn.dataset.variantId)
-      const qty = Math.max(1, Number(qtyInput?.value ?? 1))
+      const minQty = Number(qtyInput?.min || '1')
+      const maxQty = Number(qtyInput?.max || String(minQty))
+      const requestedQty = Number(qtyInput?.value)
+      const qty = Number.isInteger(requestedQty)
+        ? Math.min(maxQty, Math.max(minQty, requestedQty))
+        : minQty
       if (!variantId) return
       addBtn.disabled = true
       await addToCart(variantId, qty)

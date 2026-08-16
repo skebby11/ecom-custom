@@ -7,13 +7,25 @@ import EmptyState from '~/components/EmptyState.astro'
 import Breadcrumb from '~/components/Breadcrumb.astro'
 import { api } from '~/lib/api'
 import { productSortValues } from '@ecom/shared/format'
-import type { Paginated, ProductListItem, ProductSort } from '@ecom/shared'
+import type { Collection, Paginated, ProductListItem, ProductSort } from '@ecom/shared'
 
 const { collection: collectionSlug } = Astro.params
-if (!collectionSlug) return Astro.redirect('/404')
+if (!collectionSlug) return Astro.rewrite('/404')
 
-const collection = await api.collection(collectionSlug)
-if (!collection) return Astro.redirect('/404')
+// `api.collection` può fallire per un errore di rete/5xx, non solo restituire
+// `null`: va gestito come pagina temporaneamente non disponibile, senza far
+// fallire l'intero render (che darebbe un 500 generico) né confonderlo con un
+// 404 vero e proprio (collezione inesistente).
+let collection: Collection | null = null
+let collectionLoadError = false
+try {
+  collection = await api.collection(collectionSlug)
+} catch (err) {
+  console.error('[plp-collection] impossibile caricare la collezione', err)
+  collectionLoadError = true
+}
+
+if (!collectionLoadError && !collection) return Astro.rewrite('/404')
 
 const url = Astro.url
 const q = url.searchParams.get('q')?.trim() || undefined
@@ -23,36 +35,41 @@ const page = Math.max(1, Number(url.searchParams.get('page') ?? '1') || 1)
 const inStock = url.searchParams.get('inStock') === 'true' ? true : undefined
 
 let result: Paginated<ProductListItem> = { items: [], total: 0, page: 1, pages: 1, limit: 12 }
-let loadError = false
+let loadError = collectionLoadError
 
-try {
-  result = await api.products({ q, sort, page, collection: collectionSlug, inStock, limit: 12 })
-} catch (err) {
-  console.error('[plp-collection] impossibile caricare i prodotti', err)
-  loadError = true
+if (!collectionLoadError) {
+  try {
+    result = await api.products({ q, sort, page, collection: collectionSlug, inStock, limit: 12 })
+  } catch (err) {
+    console.error('[plp-collection] impossibile caricare i prodotti', err)
+    loadError = true
+  }
 }
 ---
 
 <Layout
-  title={`${collection.title} — Catalogo`}
-  description={collection.description ?? `Scopri i prodotti della collezione ${collection.title}.`}
+  title={collection ? `${collection.title} — Catalogo` : 'Collezione non disponibile'}
+  description={collection?.description ?? `Scopri i prodotti della collezione ${collectionSlug}.`}
 >
   <div class="container-page py-10">
-    <Breadcrumb items={[{ label: 'Catalogo', href: '/catalogo' }, { label: collection.title }]} />
-
-    <h1 class="mt-3 text-3xl font-bold text-ink">{collection.title}</h1>
-    {collection.description && <p class="mt-2 max-w-2xl text-sm text-muted">{collection.description}</p>}
-    <p class="mt-2 text-sm text-muted">{result.total} prodotti trovati</p>
+    {collection && (
+      <>
+        <Breadcrumb items={[{ label: 'Catalogo', href: '/catalogo' }, { label: collection.title }]} />
+        <h1 class="mt-3 text-3xl font-bold text-ink">{collection.title}</h1>
+        {collection.description && <p class="mt-2 max-w-2xl text-sm text-muted">{collection.description}</p>}
+        <p class="mt-2 text-sm text-muted">{result.total} prodotti trovati</p>
+      </>
+    )}
 
     <div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[260px_1fr]">
       <aside>
-        <PlpFilters actionPath={`/catalogo/${collection.slug}`} current={{ q, sort, inStock }} />
+        <PlpFilters actionPath={`/catalogo/${collectionSlug}`} current={{ q, sort, inStock }} />
       </aside>
 
       <div>
         {loadError ? (
           <EmptyState
-            title="Prodotti non disponibili"
+            title="Collezione non disponibile"
             description="Non riusciamo a contattare il negozio in questo momento. Riprova tra poco."
           />
         ) : result.items.length === 0 ? (
