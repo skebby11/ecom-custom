@@ -1,0 +1,78 @@
+---
+import '~/styles/global.css'
+import { adminLogin } from '~/lib/admin-api'
+
+const nextParam = Astro.url.searchParams.get('next')
+const next = nextParam && nextParam.startsWith('/admin') ? nextParam : '/admin'
+
+let error: string | null = null
+let emailValue = ''
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData()
+  emailValue = String(form.get('email') ?? '')
+  const password = String(form.get('password') ?? '')
+
+  const result = await adminLogin(emailValue, password)
+  if (result.ok) {
+    const headers = new Headers({ location: next })
+    for (const cookie of result.setCookies) headers.append('set-cookie', cookie)
+    return new Response(null, { status: 302, headers })
+  }
+  error = result.message
+}
+---
+
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Accedi · Admin Q4 Studio</title>
+  </head>
+  <body class="flex min-h-screen items-center justify-center bg-surface-alt px-4 text-ink">
+    <div class="w-full max-w-sm">
+      <div class="card p-6">
+        <h1 class="mb-1 text-lg font-semibold text-ink">Accesso amministratore</h1>
+        <p class="mb-5 text-sm text-muted">Q4 Studio · Pannello ecommerce</p>
+
+        {
+          error && (
+            <p role="alert" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </p>
+          )
+        }
+
+        <form method="post" novalidate class="space-y-4">
+          <div>
+            <label class="label" for="email">Email</label>
+            <input
+              class="input"
+              type="email"
+              id="email"
+              name="email"
+              autocomplete="username"
+              required
+              value={emailValue}
+            />
+          </div>
+          <div>
+            <label class="label" for="password">Password</label>
+            <input
+              class="input"
+              type="password"
+              id="password"
+              name="password"
+              autocomplete="current-password"
+              minlength="8"
+              required
+            />
+          </div>
+          <button type="submit" class="btn-primary w-full">Accedi</button>
+        </form>
+      </div>
+    </div>
+  </body>
+</html>

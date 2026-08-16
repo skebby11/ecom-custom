@@ -1,0 +1,155 @@
+---
+import AdminLayout from '~/layouts/AdminLayout.astro'
+import StatusBadge from '~/components/admin/StatusBadge.astro'
+import Pagination from '~/components/admin/Pagination.astro'
+import { requireSession, listProducts, deleteProduct } from '~/lib/admin-api'
+import { ApiError } from '~/lib/api'
+import { formatPrice, productStatuses } from '@ecom/shared/format'
+import { type ProductStatus } from '@ecom/shared'
+
+const session = await requireSession(Astro)
+if (session instanceof Response) return session
+const user = session
+
+const statusLabels: Record<ProductStatus, string> = {
+  draft: 'Bozza',
+  active: 'Attivo',
+  archived: 'Archiviato',
+}
+
+let deleteError: string | null = null
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData()
+  if (String(form.get('intent') ?? '') === 'delete') {
+    const id = Number(form.get('id'))
+    try {
+      await deleteProduct(Astro.request, id)
+      return Astro.redirect(Astro.url.pathname + Astro.url.search)
+    } catch (err) {
+      deleteError = err instanceof ApiError ? err.message : "Errore durante l'eliminazione del prodotto."
+    }
+  }
+}
+
+const q = Astro.url.searchParams.get('q') ?? ''
+const status = (Astro.url.searchParams.get('status') ?? '') as ProductStatus | ''
+const page = Math.max(1, Number(Astro.url.searchParams.get('page') ?? '1') || 1)
+
+const result = await listProducts(Astro.request, { q: q || undefined, status, page, limit: 20 })
+const hasFilters = q !== '' || status !== ''
+
+function buildHref(targetPage: number): string {
+  const url = new URL(Astro.url)
+  url.searchParams.set('page', String(targetPage))
+  return url.pathname + url.search
+}
+---
+
+<AdminLayout title="Prodotti" user={user}>
+  {
+    deleteError && (
+      <p role="alert" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {deleteError}
+      </p>
+    )
+  }
+
+  <form method="get" class="mb-4 flex flex-wrap items-end gap-3">
+    <div class="min-w-[220px] flex-1">
+      <label class="label" for="q">Cerca</label>
+      <input class="input" type="search" id="q" name="q" placeholder="Titolo o slug…" value={q} />
+    </div>
+    <div>
+      <label class="label" for="status">Stato</label>
+      <select class="input" id="status" name="status">
+        <option value="">Tutti</option>
+        {
+          productStatuses.map((s) => (
+            <option value={s} selected={s === status}>
+              {statusLabels[s]}
+            </option>
+          ))
+        }
+      </select>
+    </div>
+    <button type="submit" class="btn-secondary">Filtra</button>
+    <a href="/admin/prodotti/nuovo" class="btn-primary ml-auto">+ Nuovo prodotto</a>
+  </form>
+
+  {
+    result.items.length === 0 ? (
+      <div class="card p-8 text-center">
+        <p class="text-muted">
+          {hasFilters ? 'Nessun prodotto trovato con questi filtri.' : 'Nessun prodotto ancora. Creane uno.'}
+        </p>
+        {!hasFilters && (
+          <a href="/admin/prodotti/nuovo" class="btn-primary mt-4 inline-flex">+ Nuovo prodotto</a>
+        )}
+      </div>
+    ) : (
+      <div class="card overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="border-b border-line text-xs text-muted uppercase">
+            <tr>
+              <th class="px-4 py-2 font-medium"> </th>
+              <th class="px-4 py-2 font-medium">Titolo</th>
+              <th class="px-4 py-2 font-medium">Stato</th>
+              <th class="px-4 py-2 font-medium">Varianti</th>
+              <th class="px-4 py-2 font-medium">Prezzo min.</th>
+              <th class="px-4 py-2 font-medium">Stock</th>
+              <th class="px-4 py-2 font-medium"> </th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.items.map((p) => (
+              <tr class="border-b border-line last:border-0">
+                <td class="px-4 py-2">
+                  {p.image ? (
+                    <img
+                      src={p.image.url}
+                      alt={p.image.alt ?? ''}
+                      class="h-10 w-10 rounded-md border border-line object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div class="h-10 w-10 rounded-md border border-line bg-surface-alt" aria-hidden="true" />
+                  )}
+                </td>
+                <td class="px-4 py-2">
+                  <a href={`/admin/prodotti/${p.id}`} class="font-medium text-ink hover:underline">
+                    {p.title}
+                  </a>
+                  <p class="text-xs text-muted">{p.slug}</p>
+                </td>
+                <td class="px-4 py-2">
+                  <StatusBadge status={p.status} />
+                </td>
+                <td class="px-4 py-2 text-muted">{p.variantCount}</td>
+                <td class="px-4 py-2">{p.minPriceCents != null ? formatPrice(p.minPriceCents) : '—'}</td>
+                <td class="px-4 py-2 text-muted">{p.totalStock}</td>
+                <td class="px-4 py-2 text-right">
+                  <div class="flex justify-end gap-1">
+                    <a href={`/admin/prodotti/${p.id}`} class="btn-ghost !px-2 !py-1">Modifica</a>
+                    <form
+                      method="post"
+                      onsubmit="return confirm('Eliminare definitivamente questo prodotto? L\'operazione non è reversibile.')"
+                    >
+                      <input type="hidden" name="intent" value="delete" />
+                      <input type="hidden" name="id" value={p.id} />
+                      <button type="submit" class="btn-ghost !px-2 !py-1 text-red-600 hover:bg-red-50">
+                        Elimina
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  <Pagination page={result.page} pages={result.pages} buildHref={buildHref} />
+</AdminLayout>

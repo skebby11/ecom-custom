@@ -1,0 +1,164 @@
+---
+import AdminLayout from '~/layouts/AdminLayout.astro'
+import StatusBadge from '~/components/admin/StatusBadge.astro'
+import { requireSession, getOrder, updateOrderStatus } from '~/lib/admin-api'
+import { ApiError } from '~/lib/api'
+import { formatPrice, orderStatuses } from '@ecom/shared/format'
+import { type Order, type OrderStatus } from '@ecom/shared'
+
+const session = await requireSession(Astro)
+if (session instanceof Response) return session
+const user = session
+
+const { id } = Astro.params
+
+const statusLabels: Record<OrderStatus, string> = {
+  pending: 'In attesa',
+  paid: 'Pagato',
+  fulfilled: 'Evaso',
+  failed: 'Fallito',
+  cancelled: 'Annullato',
+}
+
+let statusError: string | null = null
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData()
+  const newStatus = String(form.get('status') ?? '') as OrderStatus
+  try {
+    await updateOrderStatus(Astro.request, id as string, newStatus)
+    return Astro.redirect(Astro.url.pathname)
+  } catch (err) {
+    statusError = err instanceof ApiError ? err.message : "Errore durante l'aggiornamento dello stato."
+  }
+}
+
+const order = await getOrder(Astro.request, id as string)
+if (!order) return Astro.redirect('/admin/ordini')
+
+/**
+ * `Order` (da @ecom/shared) non include riferimenti Stripe: qui si leggono in modo
+ * difensivo, nel caso l'endpoint admin li aggiunga come campi extra non tipizzati.
+ */
+const stripe = order as Order & {
+  stripeSessionId?: string | null
+  stripePaymentIntentId?: string | null
+}
+---
+
+<AdminLayout title={`Ordine ${order.number}`} user={user}>
+  <div class="mb-4 flex items-center justify-between">
+    <a href="/admin/ordini" class="text-sm font-medium text-brand-700 hover:underline">← Torna agli ordini</a>
+    <StatusBadge status={order.status} />
+  </div>
+
+  {
+    statusError && (
+      <p role="alert" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {statusError}
+      </p>
+    )
+  }
+
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <section class="lg:col-span-2">
+      <h2 class="mb-3 text-sm font-semibold text-ink">Righe ordine</h2>
+      <div class="card overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="border-b border-line text-xs text-muted uppercase">
+            <tr>
+              <th class="px-4 py-2 font-medium">Prodotto</th>
+              <th class="px-4 py-2 font-medium">SKU</th>
+              <th class="px-4 py-2 text-right font-medium">Qtà</th>
+              <th class="px-4 py-2 text-right font-medium">Prezzo</th>
+              <th class="px-4 py-2 text-right font-medium">Totale riga</th>
+            </tr>
+          </thead>
+          <tbody>
+            {order.items.map((item) => (
+              <tr class="border-b border-line last:border-0">
+                <td class="px-4 py-2">
+                  <p class="font-medium text-ink">{item.productTitle}</p>
+                  <p class="text-xs text-muted">{item.variantTitle}</p>
+                </td>
+                <td class="px-4 py-2 text-muted">{item.sku}</td>
+                <td class="px-4 py-2 text-right">{item.qty}</td>
+                <td class="px-4 py-2 text-right">{formatPrice(item.unitPriceCents)}</td>
+                <td class="px-4 py-2 text-right font-medium">{formatPrice(item.lineTotalCents)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot class="text-sm">
+            <tr class="border-t border-line">
+              <td colspan="4" class="px-4 py-2 text-right text-muted">Subtotale</td>
+              <td class="px-4 py-2 text-right">{formatPrice(order.subtotalCents)}</td>
+            </tr>
+            <tr>
+              <td colspan="4" class="px-4 py-2 text-right text-muted">Spedizione</td>
+              <td class="px-4 py-2 text-right">{formatPrice(order.shippingCents)}</td>
+            </tr>
+            <tr>
+              <td colspan="4" class="px-4 py-2 text-right font-semibold text-ink">Totale</td>
+              <td class="px-4 py-2 text-right font-semibold text-ink">{formatPrice(order.totalCents)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <h2 class="mt-6 mb-3 text-sm font-semibold text-ink">Indirizzo di spedizione</h2>
+      <div class="card p-4 text-sm">
+        {
+          order.shippingAddress ? (
+            <address class="not-italic">
+              {order.shippingAddress.name}<br />
+              {order.shippingAddress.line1}<br />
+              {order.shippingAddress.line2 && <>{order.shippingAddress.line2}<br /></>}
+              {order.shippingAddress.postalCode} {order.shippingAddress.city}
+              {order.shippingAddress.province ? ` (${order.shippingAddress.province})` : ''}<br />
+              {order.shippingAddress.country}
+              {order.shippingAddress.phone && <><br />Tel. {order.shippingAddress.phone}</>}
+            </address>
+          ) : (
+            <p class="text-muted">Nessun indirizzo di spedizione registrato.</p>
+          )
+        }
+      </div>
+    </section>
+
+    <section>
+      <h2 class="mb-3 text-sm font-semibold text-ink">Dettagli</h2>
+      <div class="card space-y-3 p-4 text-sm">
+        <div>
+          <p class="text-xs text-muted uppercase">Email cliente</p>
+          <p class="text-ink">{order.email}</p>
+        </div>
+        <div>
+          <p class="text-xs text-muted uppercase">Data</p>
+          <p class="text-ink">{new Date(order.createdAt).toLocaleString('it-IT')}</p>
+        </div>
+        <div>
+          <p class="text-xs text-muted uppercase">Riferimenti Stripe</p>
+          <p class="break-all text-ink">{stripe.stripeSessionId ?? '—'}</p>
+          <p class="break-all text-ink">{stripe.stripePaymentIntentId ?? '—'}</p>
+        </div>
+      </div>
+
+      <h2 class="mt-6 mb-3 text-sm font-semibold text-ink">Cambia stato</h2>
+      <form method="post" class="card space-y-3 p-4">
+        <div>
+          <label class="label" for="status">Stato ordine</label>
+          <select class="input" id="status" name="status">
+            {
+              orderStatuses.map((s) => (
+                <option value={s} selected={s === order.status}>
+                  {statusLabels[s]}
+                </option>
+              ))
+            }
+          </select>
+        </div>
+        <button type="submit" class="btn-primary w-full">Aggiorna stato</button>
+      </form>
+    </section>
+  </div>
+</AdminLayout>

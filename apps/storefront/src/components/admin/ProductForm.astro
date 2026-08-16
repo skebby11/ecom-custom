@@ -1,0 +1,219 @@
+---
+import type { Collection, ProductDetail, ProductStatus } from '@ecom/shared'
+import { productStatuses } from '@ecom/shared/format'
+import { centsToEuroInput } from './product-editor'
+
+export interface Props {
+  mode: 'create' | 'edit'
+  product: ProductDetail | null
+  collections: Collection[]
+}
+
+const { mode, product, collections } = Astro.props
+
+const statusLabels: Record<ProductStatus, string> = {
+  draft: 'Bozza',
+  active: 'Attivo',
+  archived: 'Archiviato',
+}
+
+/** Mappa id → testo del valore opzione, per ricostruire le combinazioni delle varianti. */
+const optionValueLabels = new Map<number, string>()
+for (const option of product?.options ?? []) {
+  for (const value of option.values) optionValueLabels.set(value.id, value.value)
+}
+
+const initialData = {
+  images: (product?.images ?? []).map((img) => ({ url: img.url, alt: img.alt ?? '' })),
+  options: (product?.options ?? []).map((opt) => ({
+    name: opt.name,
+    values: opt.values.map((v) => v.value),
+  })),
+  variants:
+    product && product.variants.length > 0
+      ? product.variants.map((v) => ({
+          id: v.id,
+          sku: v.sku,
+          title: v.title,
+          priceEuro: centsToEuroInput(v.priceCents),
+          compareAtEuro: centsToEuroInput(v.compareAtCents),
+          stock: v.stock,
+          optionValues: v.optionValueIds.map((id) => optionValueLabels.get(id) ?? '').filter(Boolean),
+        }))
+      : [
+          {
+            sku: '',
+            title: 'Default',
+            priceEuro: '',
+            compareAtEuro: '',
+            stock: 0,
+            optionValues: [],
+          },
+        ],
+  collectionSlugs: (product?.collections ?? []).map((c) => c.slug),
+}
+
+// Evita che una `</script>` nei dati embedded rompa il documento HTML.
+const initialDataJson = JSON.stringify(initialData).replace(/</g, '\\u003c')
+---
+
+<form id="product-form" novalidate class="space-y-8" data-mode={mode} data-product-id={product?.id ?? ''}>
+  <div id="form-error" role="alert" aria-live="polite" class="hidden rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
+
+  <section class="card p-5">
+    <h2 class="mb-4 text-sm font-semibold text-ink">Informazioni</h2>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div class="sm:col-span-2">
+        <label class="label" for="title">Titolo</label>
+        <input class="input" id="title" name="title" required value={product?.title ?? ''} />
+        <p class="mt-1 hidden text-sm text-red-600" data-error-for="title"></p>
+      </div>
+      <div>
+        <label class="label" for="slug">Slug</label>
+        <input class="input" id="slug" name="slug" required value={product?.slug ?? ''} />
+        <p class="mt-1 hidden text-sm text-red-600" data-error-for="slug"></p>
+      </div>
+      <div>
+        <label class="label" for="status">Stato</label>
+        <select class="input" id="status" name="status">
+          {
+            productStatuses.map((s) => (
+              <option value={s} selected={(product?.status ?? 'draft') === s}>
+                {statusLabels[s]}
+              </option>
+            ))
+          }
+        </select>
+      </div>
+      <div class="sm:col-span-2">
+        <label class="label" for="excerpt">Estratto</label>
+        <input class="input" id="excerpt" name="excerpt" value={product?.excerpt ?? ''} />
+        <p class="mt-1 hidden text-sm text-red-600" data-error-for="excerpt"></p>
+      </div>
+      <div class="sm:col-span-2">
+        <label class="label" for="description">Descrizione</label>
+        <textarea class="input" id="description" name="description" rows="6">{product?.description ?? ''}</textarea>
+        <p class="mt-1 hidden text-sm text-red-600" data-error-for="description"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card p-5">
+    <div class="flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-ink">Immagini</h2>
+      <button type="button" id="add-image" class="btn-secondary !px-3 !py-1.5">+ Aggiungi immagine</button>
+    </div>
+    <p class="mt-1 hidden text-sm text-red-600" data-error-for="images"></p>
+    <div id="image-rows" class="mt-4 space-y-2"></div>
+    <p id="images-empty" class="text-sm text-muted">Nessuna immagine aggiunta.</p>
+  </section>
+
+  <section class="card p-5">
+    <div class="flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-ink">Opzioni</h2>
+      <button type="button" id="add-option" class="btn-secondary !px-3 !py-1.5">+ Aggiungi opzione</button>
+    </div>
+    <p class="mt-1 text-sm text-muted">Fino a 3 opzioni (es. Taglia, Colore). Valori separati da virgola.</p>
+    <p class="mt-1 hidden text-sm text-red-600" data-error-for="options"></p>
+    <div id="option-rows" class="mt-4 space-y-3"></div>
+  </section>
+
+  <section class="card p-5">
+    <div class="flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-ink">Varianti</h2>
+      <button type="button" id="regenerate-variants" class="btn-secondary !px-3 !py-1.5">Rigenera combinazioni</button>
+    </div>
+    <p class="mt-1 hidden text-sm text-red-600" data-error-for="variants"></p>
+    <div class="mt-4 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="border-b border-line text-xs text-muted uppercase">
+          <tr>
+            <th class="px-3 py-2 font-medium">Combinazione</th>
+            <th class="px-3 py-2 font-medium">SKU</th>
+            <th class="px-3 py-2 font-medium">Prezzo (€)</th>
+            <th class="px-3 py-2 font-medium">Prezzo barrato (€)</th>
+            <th class="px-3 py-2 font-medium">Stock</th>
+          </tr>
+        </thead>
+        <tbody id="variant-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card p-5">
+    <h2 class="text-sm font-semibold text-ink">Collezioni</h2>
+    <p class="mt-1 hidden text-sm text-red-600" data-error-for="collectionSlugs"></p>
+    {
+      collections.length === 0 ? (
+        <p class="mt-3 text-sm text-muted">Nessuna collezione creata ancora.</p>
+      ) : (
+        <div class="mt-3 flex flex-wrap gap-2">
+          {collections.map((c) => (
+            <label class="inline-flex items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+              <input
+                type="checkbox"
+                name="collectionSlugs"
+                value={c.slug}
+                checked={initialData.collectionSlugs.includes(c.slug)}
+              />
+              {c.title}
+            </label>
+          ))}
+        </div>
+      )
+    }
+  </section>
+
+  <div class="flex items-center gap-3">
+    <button type="submit" id="submit-button" class="btn-primary">
+      {mode === 'edit' ? 'Salva modifiche' : 'Crea prodotto'}
+    </button>
+    <a href="/admin/prodotti" class="btn-ghost">Annulla</a>
+    <span id="save-status" role="status" aria-live="polite" class="text-sm text-muted"></span>
+  </div>
+
+  <script type="application/json" id="product-editor-data" set:html={initialDataJson} />
+</form>
+
+<template id="image-row-template">
+  <div class="image-row flex flex-wrap items-center gap-2 rounded-lg border border-line p-3" data-row>
+    <input type="url" class="input min-w-[220px] flex-1" data-field="url" placeholder="https://…immagine.jpg" />
+    <input type="text" class="input min-w-[160px] flex-1" data-field="alt" placeholder="Testo alternativo" />
+    <div class="flex gap-1">
+      <button type="button" class="btn-ghost !px-2 !py-1" data-action="move-up" aria-label="Sposta su">↑</button>
+      <button type="button" class="btn-ghost !px-2 !py-1" data-action="move-down" aria-label="Sposta giù">↓</button>
+      <button type="button" class="btn-ghost !px-2 !py-1 text-red-600 hover:bg-red-50" data-action="remove" aria-label="Rimuovi immagine">✕</button>
+    </div>
+  </div>
+</template>
+
+<template id="option-row-template">
+  <div class="option-row rounded-lg border border-line p-3" data-row>
+    <div class="flex items-start gap-2">
+      <div class="flex-1">
+        <label class="label">Nome opzione</label>
+        <input type="text" class="input" data-field="name" placeholder="Es. Taglia" />
+      </div>
+      <button type="button" class="btn-ghost mt-6 !px-2 !py-1 text-red-600 hover:bg-red-50" data-action="remove" aria-label="Rimuovi opzione">✕</button>
+    </div>
+    <div class="mt-2">
+      <label class="label">Valori (separati da virgola)</label>
+      <input type="text" class="input" data-field="values" placeholder="Es. S, M, L" />
+    </div>
+  </div>
+</template>
+
+<template id="variant-row-template">
+  <tr class="border-b border-line last:border-0" data-row>
+    <td class="px-3 py-2 font-medium text-ink" data-field="label"></td>
+    <td class="px-3 py-2"><input type="text" class="input" data-field="sku" placeholder="SKU" /></td>
+    <td class="px-3 py-2"><input type="text" inputmode="decimal" class="input" data-field="price" placeholder="0,00" /></td>
+    <td class="px-3 py-2"><input type="text" inputmode="decimal" class="input" data-field="compareAt" placeholder="—" /></td>
+    <td class="px-3 py-2"><input type="number" min="0" step="1" class="input" data-field="stock" placeholder="0" /></td>
+  </tr>
+</template>
+
+<script>
+  import { initProductEditor } from './product-editor'
+  initProductEditor()
+</script>

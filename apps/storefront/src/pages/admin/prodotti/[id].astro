@@ -1,0 +1,24 @@
+---
+import AdminLayout from '~/layouts/AdminLayout.astro'
+import ProductForm from '~/components/admin/ProductForm.astro'
+import { requireSession, getProduct, listCollections } from '~/lib/admin-api'
+
+const session = await requireSession(Astro)
+if (session instanceof Response) return session
+const user = session
+
+const { id } = Astro.params
+
+const [product, collections] = await Promise.all([
+  getProduct(Astro.request, id as string),
+  listCollections(Astro.request),
+])
+
+if (!product) {
+  return Astro.redirect('/admin/prodotti')
+}
+---
+
+<AdminLayout title={`Modifica · ${product.title}`} user={user}>
+  <ProductForm mode="edit" product={product} collections={collections} />
+</AdminLayout>

@@ -1,0 +1,190 @@
+---
+import AdminLayout from '~/layouts/AdminLayout.astro'
+import {
+  requireSession,
+  listCollections,
+  saveCollection,
+  deleteCollection,
+  type ZodFlatten,
+} from '~/lib/admin-api'
+import { ApiError } from '~/lib/api'
+
+const session = await requireSession(Astro)
+if (session instanceof Response) return session
+const user = session
+
+let formError: string | null = null
+let fieldErrors: Record<string, string[] | undefined> = {}
+// Valori da ripresentare nel form in caso di errore di validazione.
+let formValues = { id: '', slug: '', title: '', description: '', imageUrl: '' }
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData()
+  const intent = String(form.get('intent') ?? '')
+
+  if (intent === 'delete') {
+    const id = Number(form.get('id'))
+    try {
+      await deleteCollection(Astro.request, id)
+      return Astro.redirect('/admin/collezioni')
+    } catch (err) {
+      formError = err instanceof ApiError ? err.message : "Errore durante l'eliminazione della collezione."
+    }
+  } else {
+    const idRaw = String(form.get('id') ?? '')
+    formValues = {
+      id: idRaw,
+      slug: String(form.get('slug') ?? '').trim(),
+      title: String(form.get('title') ?? '').trim(),
+      description: String(form.get('description') ?? '').trim(),
+      imageUrl: String(form.get('imageUrl') ?? '').trim(),
+    }
+    try {
+      await saveCollection(
+        Astro.request,
+        {
+          slug: formValues.slug,
+          title: formValues.title,
+          description: formValues.description || null,
+          imageUrl: formValues.imageUrl || null,
+        },
+        idRaw || undefined
+      )
+      return Astro.redirect('/admin/collezioni')
+    } catch (err) {
+      if (err instanceof ApiError) {
+        formError = err.message
+        fieldErrors = (err.details as ZodFlatten | undefined)?.fieldErrors ?? {}
+      } else {
+        formError = 'Errore durante il salvataggio della collezione.'
+      }
+    }
+  }
+}
+
+const collections = await listCollections(Astro.request)
+
+const editId = Astro.url.searchParams.get('edit')
+if (editId && Astro.request.method !== 'POST') {
+  const editing = collections.find((c) => String(c.id) === editId)
+  if (editing) {
+    formValues = {
+      id: String(editing.id),
+      slug: editing.slug,
+      title: editing.title,
+      description: editing.description ?? '',
+      imageUrl: editing.imageUrl ?? '',
+    }
+  }
+}
+
+const isEditing = formValues.id !== ''
+---
+
+<AdminLayout title="Collezioni" user={user}>
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <section class="lg:col-span-2">
+      <h2 class="mb-3 text-sm font-semibold text-ink">Collezioni esistenti</h2>
+      {
+        collections.length === 0 ? (
+          <div class="card p-8 text-center">
+            <p class="text-muted">Nessuna collezione ancora. Creane una dal modulo qui accanto.</p>
+          </div>
+        ) : (
+          <div class="card overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="border-b border-line text-xs text-muted uppercase">
+                <tr>
+                  <th class="px-4 py-2 font-medium"> </th>
+                  <th class="px-4 py-2 font-medium">Titolo</th>
+                  <th class="px-4 py-2 font-medium">Slug</th>
+                  <th class="px-4 py-2 font-medium">Prodotti</th>
+                  <th class="px-4 py-2 font-medium"> </th>
+                </tr>
+              </thead>
+              <tbody>
+                {collections.map((c) => (
+                  <tr class="border-b border-line last:border-0">
+                    <td class="px-4 py-2">
+                      {c.imageUrl ? (
+                        <img src={c.imageUrl} alt="" class="h-10 w-10 rounded-md border border-line object-cover" loading="lazy" />
+                      ) : (
+                        <div class="h-10 w-10 rounded-md border border-line bg-surface-alt" aria-hidden="true" />
+                      )}
+                    </td>
+                    <td class="px-4 py-2 font-medium text-ink">{c.title}</td>
+                    <td class="px-4 py-2 text-muted">{c.slug}</td>
+                    <td class="px-4 py-2 text-muted">{c.productCount ?? '—'}</td>
+                    <td class="px-4 py-2 text-right">
+                      <div class="flex justify-end gap-1">
+                        <a href={`/admin/collezioni?edit=${c.id}`} class="btn-ghost !px-2 !py-1">Modifica</a>
+                        <form method="post" onsubmit="return confirm('Eliminare questa collezione?')">
+                          <input type="hidden" name="intent" value="delete" />
+                          <input type="hidden" name="id" value={c.id} />
+                          <button type="submit" class="btn-ghost !px-2 !py-1 text-red-600 hover:bg-red-50">Elimina</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </section>
+
+    <section>
+      <h2 class="mb-3 text-sm font-semibold text-ink">
+        {isEditing ? 'Modifica collezione' : 'Nuova collezione'}
+      </h2>
+      <form method="post" class="card space-y-4 p-4">
+        {
+          formError && (
+            <p role="alert" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {formError}
+            </p>
+          )
+        }
+        <input type="hidden" name="id" value={formValues.id} />
+        <div>
+          <label class="label" for="coll-title">Titolo</label>
+          <input class="input" id="coll-title" name="title" required value={formValues.title} />
+          {fieldErrors.title && <p class="mt-1 text-sm text-red-600">{fieldErrors.title.join(' ')}</p>}
+        </div>
+        <div>
+          <label class="label" for="coll-slug">Slug</label>
+          <input class="input" id="coll-slug" name="slug" required value={formValues.slug} />
+          {fieldErrors.slug && <p class="mt-1 text-sm text-red-600">{fieldErrors.slug.join(' ')}</p>}
+        </div>
+        <div>
+          <label class="label" for="coll-description">Descrizione</label>
+          <textarea class="input" id="coll-description" name="description" rows="3">{formValues.description}</textarea>
+        </div>
+        <div>
+          <label class="label" for="coll-image">URL immagine</label>
+          <input class="input" id="coll-image" name="imageUrl" value={formValues.imageUrl} placeholder="https://…" />
+        </div>
+        <div class="flex items-center gap-3">
+          <button type="submit" class="btn-primary flex-1">{isEditing ? 'Salva modifiche' : 'Crea collezione'}</button>
+          {isEditing && <a href="/admin/collezioni" class="btn-ghost">Annulla</a>}
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <script>
+    import { slugify } from '@ecom/shared/format'
+
+    const titleInput = document.getElementById('coll-title') as HTMLInputElement
+    const slugInput = document.getElementById('coll-slug') as HTMLInputElement
+    let slugTouched = slugInput.value.trim() !== ''
+
+    slugInput.addEventListener('input', () => {
+      slugTouched = true
+    })
+    titleInput.addEventListener('input', () => {
+      if (!slugTouched) slugInput.value = slugify(titleInput.value)
+    })
+  </script>
+</AdminLayout>

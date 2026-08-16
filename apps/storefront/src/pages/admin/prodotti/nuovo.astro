@@ -1,0 +1,15 @@
+---
+import AdminLayout from '~/layouts/AdminLayout.astro'
+import ProductForm from '~/components/admin/ProductForm.astro'
+import { requireSession, listCollections } from '~/lib/admin-api'
+
+const session = await requireSession(Astro)
+if (session instanceof Response) return session
+const user = session
+
+const collections = await listCollections(Astro.request)
+---
+
+<AdminLayout title="Nuovo prodotto" user={user}>
+  <ProductForm mode="create" product={null} collections={collections} />
+</AdminLayout>
